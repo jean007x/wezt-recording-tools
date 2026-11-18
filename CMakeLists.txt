@@ -126,7 +126,7 @@ if(WEZT_ENABLE_VST3)
   target_include_directories(wezt_vst3 PUBLIC src ${WEZT_VST3_SDK_DIR})
   target_link_libraries(wezt_vst3 PUBLIC wezt_core sdk_hosting sdk sdk_common base pluginterfaces ${CMAKE_DL_LIBS})
   if(APPLE)
-    target_link_libraries(wezt_vst3 PUBLIC "-framework CoreFoundation")
+    target_link_libraries(wezt_vst3 PUBLIC "-framework CoreFoundation" "-framework Foundation")   # module_mac.mm uses NSBundle, NSFileManager, NSLog
   endif()
   target_compile_definitions(wezt_core PUBLIC WEZT_HAS_VST3=1)
 endif()

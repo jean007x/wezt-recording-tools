@@ -168,12 +168,16 @@ class WasapiDevice : public AudioDevice {
     if (!cb_) { if (error) *error = "device not opened"; return false; }
     quit_ = false;
     notice_.clear();
+    // The wake event belongs to this thread (start/stop), not to the audio thread: stop() signals it while the audio
+    // thread may be on its way out, so the audio thread must never close it (ThreadSanitizer found that race).
+    if (!wake_) wake_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     std::promise<std::string> ready;
     auto fut = ready.get_future();
     thread_ = std::thread([this, p = std::move(ready)]() mutable { run(std::move(p)); });
     const std::string err = fut.get();
     if (!err.empty()) {
       if (thread_.joinable()) thread_.join();
+      closeWake();
       if (error) *error = err;
       return false;
     }
@@ -186,15 +190,16 @@ class WasapiDevice : public AudioDevice {
     quit_ = true;
     if (wake_) SetEvent(wake_);
     if (thread_.joinable()) thread_.join();
+    closeWake();
     running_ = false;
   }
 
   AudioConfig actualConfig() const override { return actual_; }
+  void closeWake() { if (wake_) { CloseHandle(wake_); wake_ = nullptr; } }
 
  private:
   void run(std::promise<std::string> ready) {
     const HRESULT coHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    wake_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     std::string err = init();
     ready.set_value(err);
     if (err.empty()) {
@@ -209,7 +214,6 @@ class WasapiDevice : public AudioDevice {
     }
     out_.reset();
     in_.reset();
-    if (wake_) { CloseHandle(wake_); wake_ = nullptr; }
     if (SUCCEEDED(coHr)) CoUninitialize();
   }
 
