@@ -1,0 +1,51 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux (${{ matrix.preset }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [release, clang, asan, tsan]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build clang
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }} -G Ninja
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} -j2
+
+  # The Windows and macOS backends (WASAPI, CoreAudio) were written on Linux and have never been built on those systems.
+  # These jobs report what breaks without blocking the Linux results, until they are green and this flag is removed.
+  windows:
+    name: Windows (MSVC, experimental)
+    runs-on: windows-2022
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release -j 2
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  macos:
+    name: macOS (Apple clang, experimental)
+    runs-on: macos-14
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j 3
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

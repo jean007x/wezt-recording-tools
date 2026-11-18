@@ -1,0 +1,102 @@
+#include "engine/engine.h"
+
+#include <algorithm>
+#include <cmath>
+
+#include "engine/denormals.h"
+
+namespace wezt {
+
+Engine::Engine(Graph& graph, std::size_t maxBlockFrames, std::size_t channels, double sampleRate,
+               std::size_t scratchCaptureSeconds)
+    : graph_(graph),
+      block_(channels, maxBlockFrames),
+      zeros_(maxBlockFrames, 0.f),
+      maxBlock_(maxBlockFrames),
+      channels_(channels),
+      captureSeconds_(scratchCaptureSeconds),
+      captureCapacity_(static_cast<std::size_t>(sampleRate) * scratchCaptureSeconds),
+      captureChannels_(channels) {
+  devOut_ = static_cast<unsigned>(channels);  // until a device says otherwise
+  ctx_.transport = &transport_;
+  ctx_.sampleRate = sampleRate;
+  ctx_.zeros = zeros_.data();
+  capture_.assign(captureChannels_ * captureCapacity_, 0.f);
+  inPtrs_.assign(8, nullptr);
+  graph_.prepare(sampleRate, channels, maxBlockFrames);
+}
+
+void Engine::deviceAboutToStart(const audio::AudioConfig& actual) {
+  devIn_ = actual.inChannels;
+  devOut_ = actual.outChannels;
+  ctx_.inChannels = devIn_;
+  ctx_.recordLatencyFrames = static_cast<std::int64_t>(actual.inputLatencyFrames) + actual.outputLatencyFrames;
+  if (inPtrs_.size() < devIn_) inPtrs_.assign(devIn_, nullptr);
+
+  const double rate = actual.sampleRate > 0 ? static_cast<double>(actual.sampleRate) : ctx_.sampleRate;
+  if (rate != ctx_.sampleRate) {  // device decides the rate (e.g. CoreAudio keeps the hardware's)
+    ctx_.sampleRate = rate;
+    rateChanged_ = true;
+    graph_.prepare(rate, channels_, maxBlock_);  // safe: the callback has not started yet
+    captureCapacity_ = static_cast<std::size_t>(rate) * captureSeconds_;
+    capture_.assign(captureChannels_ * captureCapacity_, 0.f);
+    recorded_.store(0, std::memory_order_release);
+  }
+}
+
+void Engine::process(const float* const* in, float* const* out, unsigned frames) {
+  ScopedNoDenormals noDenormals;
+  unsigned done = 0;
+  while (done < frames) {
+    std::size_t chunk = std::min<std::size_t>(frames - done, maxBlock_);
+    const std::int64_t start = transport_.beginBlock();
+    const bool playing = transport_.playing();
+    if (playing) {  // end the chunk exactly at the loop end so the wrap is sample-accurate
+      const std::int64_t toLoop = transport_.framesUntilLoopEnd();
+      if (toLoop < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(std::max<std::int64_t>(1, toLoop));
+    }
+
+    // Input slices for this chunk.
+    for (unsigned c = 0; c < devIn_; ++c) inPtrs_[c] = (in && in[c]) ? in[c] + done : zeros_.data();
+    ctx_.chunkStart = start;
+    ctx_.frames = chunk;
+    ctx_.playing = playing;
+    ctx_.recording = playing && transport_.recording();
+    ctx_.input = devIn_ ? inPtrs_.data() : nullptr;
+
+    // Scratch capture of raw input (diagnostics / tests).
+    if (ctx_.recording && devIn_ > 0) {
+      const std::size_t at = recorded_.load(std::memory_order_relaxed);
+      const std::size_t n = at < captureCapacity_ ? std::min(chunk, captureCapacity_ - at) : 0;
+      const std::size_t chans = std::min<std::size_t>(captureChannels_, devIn_);
+      for (std::size_t c = 0; c < chans; ++c)
+        std::copy(inPtrs_[c], inPtrs_[c] + n, capture_.begin() + static_cast<std::ptrdiff_t>(c * captureCapacity_ + at));
+      recorded_.store(at + n, std::memory_order_release);
+    }
+
+    graph_.render(block_, chunk);
+
+    // Deliver to the device: copy the channels both sides have, silence any extra device channels.
+    for (unsigned c = 0; c < devOut_; ++c) {
+      float* dst = out[c] + done;
+      if (c < channels_) {  // never hand NaN/Inf (a misbehaving plugin) to the hardware
+        const float* src = block_.channel(c);
+        for (std::size_t i = 0; i < chunk; ++i) dst[i] = std::isfinite(src[i]) ? src[i] : 0.f;
+      }
+      else std::fill(dst, dst + chunk, 0.f);
+    }
+    if (playing) transport_.advance(static_cast<std::int64_t>(chunk));
+    done += static_cast<unsigned>(chunk);
+  }
+}
+
+AudioBuffer Engine::takeRecording() const {
+  const std::size_t n = recorded_.load(std::memory_order_acquire);
+  AudioBuffer b(captureChannels_, n);
+  for (std::size_t c = 0; c < captureChannels_; ++c)
+    std::copy(capture_.begin() + static_cast<std::ptrdiff_t>(c * captureCapacity_),
+              capture_.begin() + static_cast<std::ptrdiff_t>(c * captureCapacity_ + n), b.channel(c));
+  return b;
+}
+
+}  // namespace wezt
