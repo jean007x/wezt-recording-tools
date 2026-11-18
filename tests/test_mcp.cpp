@@ -78,7 +78,7 @@ int main() {
       wezt::music::MidiClip c; wezt::music::Note n; n.start = 0; n.length = 5; n.pitch = 57; n.velocity = 90; c.notes.push_back(n);
       auto r = v::sing(std::string("la[") + vw + "]", c, sp); CHECK(r.ok);
       wezt::io::writeWavFloat((fs::path(dir) / (std::string("take_") + vw + ".wav")).string(), r.audio, 22050);
-      call(s, "add_audio_file", std::string("{\"path\":\"") + (fs::path(dir) / (std::string("take_") + vw + ".wav")).string() + "\",\"track_name\":\"Take " + vw + "\"}", &err); CHECK(!err);
+      call(s, "add_audio_file", std::string("{\"path\":\"") + (fs::path(dir) / (std::string("take_") + vw + ".wav")).generic_string() + "\",\"track_name\":\"Take " + vw + "\"}", &err); CHECK(!err);
     }
     t = call(s, "build_voice_bank", "{\"recordings\":[{\"vowel\":\"ah\",\"track\":\"Take ah\"},{\"vowel\":\"ee\",\"track\":\"Take ee\"},{\"vowel\":\"oo\",\"track\":\"Take oo\"}],\"name\":\"me\",\"owner\":\"tester\",\"consent\":true}", &err);
     CHECK(!err); if (err) std::printf("BANK: %s\n", t.c_str());
@@ -87,7 +87,7 @@ int main() {
       v::SingParams sp; sp.bpm = 120; sp.sampleRate = 22050; sp.humanize = 0; sp.vibratoCents = 0; sp.fitRange = false; sp.voice = v::VoiceType::Tenor; sp.room = 0;
       wezt::music::MidiClip c; wezt::music::Note n; n.start = 0.2; n.length = 5; n.pitch = 57; n.velocity = 90; c.notes.push_back(n);
       auto r = v::sing("sa[ah]", c, sp); CHECK(r.ok);
-      const std::string f = (fs::path(dir) / "take_sah.wav").string();
+      const std::string f = (fs::path(dir) / "take_sah.wav").generic_string();   // forward slashes: the path goes into JSON
       wezt::io::writeWavFloat(f, r.audio, 22050);
       call(s, "add_audio_file", "{\"path\":\"" + f + "\",\"track_name\":\"Take sah\"}", &err); CHECK(!err);
       t = call(s, "build_voice_bank", "{\"recordings\":[{\"vowel\":\"ah\",\"track\":\"Take ah\"},{\"vowel\":\"s\",\"track\":\"Take sah\"}],\"name\":\"me2\",\"owner\":\"tester\",\"consent\":true}", &err);
@@ -111,7 +111,7 @@ int main() {
       t = call(s, "split_voice_takes", "{\"file\":\"takes.wav\"}", &err); CHECK(!err && t.find("2 takes") != std::string::npos); if (err || t.find("2 takes") == std::string::npos) std::printf("SPLIT: %s\n", t.c_str());
       call(s, "build_voice_bank_from_takes", "{\"file\":\"takes.wav\",\"use\":\"0=ah,1=ee\",\"name\":\"tk\",\"consent\":false}", &err); CHECK(err);            // no consent
       call(s, "build_voice_bank_from_takes", "{\"file\":\"takes.wav\",\"use\":\"\",\"name\":\"tk\",\"consent\":true}", &err); CHECK(err);                       // nothing named
-      const std::string outside = (fs::temp_directory_path() / "wezt_outside_takes.wav").string();
+      const std::string outside = (fs::temp_directory_path() / "wezt_outside_takes.wav").generic_string();
       fs::copy_file(fs::path(dir) / "takes.wav", outside, fs::copy_options::overwrite_existing);
       call(s, "build_voice_bank_from_takes", "{\"file\":\"" + outside + "\",\"use\":\"0=ah\",\"name\":\"tk\",\"consent\":true}", &err); CHECK(err);   // outside the work folder
       call(s, "split_voice_takes", "{\"file\":\"" + outside + "\"}", &err); CHECK(err);
