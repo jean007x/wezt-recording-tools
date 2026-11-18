@@ -266,7 +266,7 @@ int main() {
           CHECK(w != nullptr);
           if (w) {
             ImGuiIO& io = ImGui::GetIO();
-            const float x = w->Pos.x + 30.f, y0 = w->Pos.y + 130.f;
+            const float x = w->Pos.x + 30.f, y0 = w->Pos.y + 160.f;   // below the toolbar rows (the MIDI keyboard chooser has its own row)
             io.AddMousePosEvent(x, y0); frames(app, 2);
             CHECK(app.previewingKey() == -1);
             io.AddMouseButtonEvent(0, true); frames(app, 2);
@@ -387,6 +387,34 @@ int main() {
     CHECK(app.analyzeMix(&msg) && msg.find("LUFS") != std::string::npos);
     std::printf("%s\n", msg.c_str());
     CHECK(!app.exportAdm("/no/such/dir/x.wav", &msg) && !msg.empty());
+  }
+  {  // drawing plug-in automation with the mouse in the Plugin Parameters graph: click adds a point, undo removes it
+    App app;
+    auto& s = app.session();
+    frames(app);
+    const auto t = app.selectedTrack();
+    plugins::PluginDescriptor d; d.name = "Wezt EQ"; d.format = plugins::Format::Builtin; d.bitness = 64;
+    CHECK(s.addInsert(t, instruments::makeBuiltin(d), d));
+    const unsigned pid = s.track(t)->inserts[0].instance->parameters().back().id;
+    CHECK(s.setParamAutomation(t, 0, pid, {{0, 0.2f}, {96000, 0.8f}}));
+    app.selectPluginParam(t, 0, static_cast<int>(pid));
+    app.showPluginParams(true);
+    frames(app, 3);
+    ImGuiWindow* w = ImGui::FindWindowByName("Plugin Parameters");
+    CHECK(w != nullptr);
+    if (w) {
+      ImGuiIO& io = ImGui::GetIO();
+      auto count = [&] { const auto* l = s.paramAutomation(t, 0, pid); return l ? l->points().size() : std::size_t(0); };
+      CHECK(count() == 2);
+      io.AddMousePosEvent(w->Pos.x + w->Size.x * 0.7f, w->Pos.y + w->Size.y - 50.f); frames(app, 2);
+      io.AddMouseButtonEvent(0, true); frames(app, 2);
+      io.AddMouseButtonEvent(0, false); frames(app, 2);
+      std::printf("points after one click in the graph: %zu\n", count());
+      CHECK(count() == 3);
+      app.execute(Command::Undo); frames(app, 2);
+      CHECK(count() == 2);                                  // the drawn point is one undo step
+    }
+    app.showPluginParams(false);
   }
   ImGui::DestroyContext();
   std::printf(failures ? "FAILED\n" : "ui tests passed\n");
