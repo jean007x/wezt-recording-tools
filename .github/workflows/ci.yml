@@ -90,3 +90,29 @@ jobs:
             build/wezt-studio
             build/Release/wezt-studio.exe
           if-no-files-found: warn
+
+  # Real plug-in hosting: the Steinberg VST3 SDK (with its sample plug-ins, built here as test subjects) and the CLAP headers.
+  plugins:
+    name: Plug-in hosting (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libx11-dev libxcb-util-dev libxcb-cursor-dev libxcb-keysyms1-dev libxcb-xkb-dev libxkbcommon-dev libxkbcommon-x11-dev libfontconfig1-dev libcairo2-dev libgtkmm-3.0-dev libsqlite3-dev
+      - name: Fetch the VST3 SDK and CLAP
+        shell: bash
+        run: |
+          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/steinbergmedia/vst3sdk.git "$RUNNER_TEMP/vst3sdk"
+          git clone --depth 1 --branch 1.2.3 https://github.com/free-audio/clap.git "$RUNNER_TEMP/clap"
+      - name: Configure
+        shell: bash
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWEZT_ENABLE_VST3=ON -DWEZT_VST3_SDK_DIR="$RUNNER_TEMP/vst3sdk" -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=ON -DWEZT_ENABLE_CLAP=ON -DWEZT_CLAP_DIR="$RUNNER_TEMP/clap"
+      - name: Build
+        run: cmake --build build --config Release -j 3
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
