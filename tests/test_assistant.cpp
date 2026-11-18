@@ -1,9 +1,22 @@
 // The assistant: commands, memory, learning that survives a restart, mastering to a file, the
 // local-only language model client (against a real loopback server), and its refusal to leave the machine.
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+using sock_t = SOCKET;
+using socklen_t = int;
+static void closeSock(sock_t s) { closesocket(s); }
+static const sock_t kBadSock = INVALID_SOCKET;
+#else
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+using sock_t = int;
+static void closeSock(sock_t s) { ::close(s); }
+static const sock_t kBadSock = -1;
+#endif
 
 #include <atomic>
 #include <cmath>
@@ -46,7 +59,7 @@ void writeNoise(const std::string& path, double secs, double amp, int lowpasses,
 
 // A tiny HTTP server on 127.0.0.1 that answers one request with `response` and records the request.
 struct FakeServer {
-  int listenFd = -1, port = 0;
+  sock_t listenFd = kBadSock; int port = 0;
   std::string request;
   std::thread th;
   explicit FakeServer(std::string response) {
@@ -59,13 +72,13 @@ struct FakeServer {
     ::getsockname(listenFd, reinterpret_cast<sockaddr*>(&a), &len);
     port = ntohs(a.sin_port);
     th = std::thread([this, response] {
-      const int c = ::accept(listenFd, nullptr, nullptr);
-      if (c < 0) return;
+      const sock_t c = ::accept(listenFd, nullptr, nullptr);
+      if (c == kBadSock) return;
       char buf[4096];
       std::string req;
       std::size_t need = std::string::npos;
       for (;;) {
-        const long n = ::recv(c, buf, sizeof buf, 0);
+        const long n = static_cast<long>(::recv(c, buf, static_cast<int>(sizeof buf), 0));
         if (n <= 0) break;
         req.append(buf, static_cast<std::size_t>(n));
         const auto he = req.find("\r\n\r\n");
@@ -75,11 +88,11 @@ struct FakeServer {
         }
       }
       request = req;
-      ::send(c, response.data(), response.size(), 0);
-      ::close(c);
+      ::send(c, response.data(), static_cast<int>(response.size()), 0);
+      closeSock(c);
     });
   }
-  ~FakeServer() { if (th.joinable()) th.join(); ::close(listenFd); }
+  ~FakeServer() { if (th.joinable()) th.join(); closeSock(listenFd); }
 };
 std::string http200(const std::string& body) { return "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body; }
 
@@ -144,12 +157,12 @@ void testLlmClient() {
     CHECK(!m.complete({{"user", "x"}}, out, err));
   }
   {  // nothing listening
-    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    sock_t fd = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in a{}; a.sin_family = AF_INET; inet_pton(AF_INET, "127.0.0.1", &a.sin_addr);
     ::bind(fd, reinterpret_cast<sockaddr*>(&a), sizeof a);
     socklen_t l = sizeof a; ::getsockname(fd, reinterpret_cast<sockaddr*>(&a), &l);
     const int port = ntohs(a.sin_port);
-    ::close(fd);
+    closeSock(fd);
     LocalHttpModel m("127.0.0.1", port);
     std::string out, err;
     CHECK(!m.complete({{"user", "x"}}, out, err) && contains(err, "no language model"));
@@ -251,6 +264,9 @@ void testAssistant() {
 }  // namespace
 
 int main() {
+#ifdef _WIN32
+  WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
+#endif
   testLlmClient();
   testAssistant();
   std::printf(failures ? "FAILED\n" : "assistant tests passed\n");
