@@ -1,6 +1,8 @@
 #include "engine/graph.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 
 namespace wezt {
 
@@ -160,7 +162,20 @@ void Graph::render(AudioBuffer& out, std::size_t frames) {
         for (std::size_t i = 0; i < frames; ++i) d[i] += s[i];
       }
     }
+    if (n.quarantined) {   // a node that kept producing NaN/inf stays silent until resetFault()
+      for (std::size_t c = 0; c < channels_; ++c) std::fill(n.out.channel(c), n.out.channel(c) + frames, 0.f);
+      continue;
+    }
     n.proc->process(n.in, n.out);
+    bool bad = false;
+    for (std::size_t c = 0; c < channels_; ++c) {
+      float* d = n.out.channel(c);
+      for (std::size_t i = 0; i < frames; ++i) {
+        std::uint32_t bits; std::memcpy(&bits, d + i, sizeof bits);
+        if ((bits & 0x7f800000u) == 0x7f800000u) { d[i] = 0.f; bad = true; }   // exponent all ones: NaN or infinity
+      }
+    }
+    if (bad) { ++n.faultBlocks; if (++n.badRun >= kQuarantineAfter) n.quarantined = true; } else n.badRun = 0;
   }
   if (alive(output_)) {
     const AudioBuffer& o = nodes_[output_].out;

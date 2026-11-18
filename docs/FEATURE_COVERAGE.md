@@ -5,6 +5,12 @@ and is tested but no window or shortcut uses it yet. CI (GitHub Actions) builds 
 full app compiles and its UI test passes on all three, and real VST3/CLAP plug-ins are hosted on all three. Still never run:
 the window on a real display, real audio hardware, a real MIDI keyboard, commercial plug-ins, a real Claude Desktop session.
 
+## Engine safety
+- **Fault containment (built, tested):** NaN or infinity in any node's output (a misbehaving plug-in) is replaced by 0 before the
+  next node sees it; a node that does it in 4 blocks in a row is muted until reset. Not built: telling the user in the interface
+  that a plug-in was muted, and catching a plug-in that crashes or hangs (that is what the 32-bit bridge's process separation is for;
+  the 64-bit hosts run plug-ins in-process).
+
 ## Edit window
 
 | Feature | State |

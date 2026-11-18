@@ -1,6 +1,7 @@
 // Engine and graph behaviour: variable callback sizes, device/engine mismatches, sample-accurate
 // loops, input monitoring, plugin delay compensation, nodes added/removed after prepare.
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #include <memory>
 #include <vector>
@@ -284,7 +285,55 @@ static void testNonFiniteOutput() {
   CHECK(ok);
 }
 
+class Constant : public Processor {
+ public:
+  explicit Constant(float v) : v_(v) {}
+  void process(const AudioBuffer&, AudioBuffer& out) override { for (std::size_t c = 0; c < out.channels; ++c) for (std::size_t i = 0; i < out.frames; ++i) out.channel(c)[i] = v_; }
+ private:
+  float v_;
+};
+
+// A misbehaving plug-in: passes its input but, when `broken`, writes NaN and infinity into it.
+class BrokenPlugin : public Processor {
+ public:
+  bool broken = true;
+  void process(const AudioBuffer& in, AudioBuffer& out) override {
+    for (std::size_t c = 0; c < out.channels; ++c)
+      for (std::size_t i = 0; i < out.frames; ++i) {
+        float v = in.channel(c)[i];
+        if (broken && i % 7 == 3) v = (i % 2) ? std::numeric_limits<float>::quiet_NaN() : std::numeric_limits<float>::infinity();
+        out.channel(c)[i] = v;
+      }
+  }
+};
+
+void testFaultContainment() {
+  Graph g;
+  const auto src = g.add(std::make_unique<Constant>(0.5f));
+  auto poison = std::make_unique<BrokenPlugin>(); BrokenPlugin* pz = poison.get();
+  const auto bad = g.add(std::move(poison));
+  const auto after = g.add(std::make_unique<Gain>(1.0f));
+  CHECK(g.connect(src, bad)); CHECK(g.connect(bad, after));
+  g.setOutput(after);
+  g.prepare(48000, 2, 64);
+  AudioBuffer out(2, 64);
+  auto finiteAll = [&] { for (std::size_t c = 0; c < 2; ++c) for (std::size_t i = 0; i < 64; ++i) if (!std::isfinite(out.channel(c)[i])) return false; return true; };
+  g.render(out);
+  CHECK(finiteAll());                                          // nothing non-finite reaches the next node or the output
+  CHECK(out.channel(0)[3] == 0.f && out.channel(0)[4] == 0.5f); // the bad samples became 0, the good ones are untouched
+  CHECK(g.nonFiniteBlocks(bad) == 1 && !g.quarantined(bad));
+  for (int i = 0; i < 5; ++i) { g.render(out); CHECK(finiteAll()); }
+  CHECK(g.quarantined(bad));                                    // muted after 4 blocks in a row
+  CHECK(out.channel(0)[4] == 0.f);
+  pz->broken = false; g.resetFault(bad);
+  g.render(out);
+  CHECK(!g.quarantined(bad) && out.channel(0)[3] == 0.5f);      // a repaired node runs again
+  g.render(out);
+  CHECK(g.nonFiniteBlocks(bad) == 4);                           // only the four bad blocks before the mute count; muted and healthy blocks do not
+}
+
 int main() {
+  testFaultContainment();
   testNonFiniteOutput();
   testVariableCallbackSizes();
   testTransportAccuracy();

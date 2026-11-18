@@ -99,6 +99,14 @@ class Graph {
   Processor* processor(NodeId n);
   bool prepared() const { return prepared_; }
 
+  // Fault containment: NaN or infinity in a node's output is replaced by 0 before any other node sees it. After
+  // kQuarantineAfter blocks in a row with such samples the node is muted (not run) until resetFault(). Counters are plain
+  // values written by the audio thread: read them while the audio is stopped, or accept a slightly stale number.
+  static constexpr std::uint32_t kQuarantineAfter = 4;
+  std::uint64_t nonFiniteBlocks(NodeId n) const { return alive(n) ? nodes_[n].faultBlocks : 0; }
+  bool quarantined(NodeId n) const { return alive(n) && nodes_[n].quarantined; }
+  void resetFault(NodeId n) { if (alive(n)) { nodes_[n].badRun = 0; nodes_[n].quarantined = false; } }
+
  private:
   struct Node {
     std::unique_ptr<Processor> proc;  // null = removed
@@ -106,6 +114,9 @@ class Graph {
     std::vector<DelayLine> edgeDelay;  // parallel to inputs
     AudioBuffer in, out;
     std::size_t pathLatency = 0;
+    std::uint64_t faultBlocks = 0;   // blocks that contained NaN/inf
+    std::uint32_t badRun = 0;        // consecutive such blocks
+    bool quarantined = false;
   };
   bool alive(NodeId n) const { return n < nodes_.size() && nodes_[n].proc != nullptr; }
   bool reaches(NodeId from, NodeId target) const;
