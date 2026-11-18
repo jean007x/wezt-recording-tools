@@ -22,12 +22,10 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }} -j2
 
-  # The Windows and macOS backends (WASAPI, CoreAudio) were written on Linux and have never been built on those systems.
-  # These jobs report what breaks without blocking the Linux results, until they are green and this flag is removed.
+  # Windows and macOS: the whole library and every test build and pass here (WASAPI and CoreAudio themselves cannot run on a runner without sound hardware).
   windows:
-    name: Windows (MSVC, experimental)
+    name: Windows (MSVC)
     runs-on: windows-2022
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Configure
@@ -38,9 +36,8 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
 
   macos:
-    name: macOS (Apple clang, experimental)
+    name: macOS (Apple clang)
     runs-on: macos-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Configure
@@ -49,3 +46,47 @@ jobs:
         run: cmake --build build -j 3
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # The full app with its window (Dear ImGui + GLFW, fetched here). Builds on all three systems; the CPU snapshot is uploaded so the layout can be looked at.
+  app:
+    name: App (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+      - name: Fetch Dear ImGui and GLFW
+        shell: bash
+        run: |
+          git clone --depth 1 --branch v1.91.9 https://github.com/ocornut/imgui.git "$RUNNER_TEMP/imgui"
+          git clone --depth 1 --branch 3.4 https://github.com/glfw/glfw.git "$RUNNER_TEMP/glfw"
+      - name: Configure
+        shell: bash
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWEZT_BUILD_UI=ON -DWEZT_IMGUI_DIR="$RUNNER_TEMP/imgui" -DWEZT_GLFW_DIR="$RUNNER_TEMP/glfw" -DGLFW_BUILD_WAYLAND=OFF
+      - name: Build
+        run: cmake --build build --config Release -j 3
+      - name: UI test
+        run: ctest --test-dir build -C Release -R wezt_ui_test --output-on-failure
+      - name: Snapshots
+        shell: bash
+        run: |
+          mkdir -p snapshots
+          B=$(find build -name 'wezt_ui_snapshot*' -type f \( -perm -u+x -o -name '*.exe' \) | head -1)
+          for v in edit mix sampler assistant pianoroll plugparams; do "$B" snapshots/$v.ppm $v || true; done
+          "$B" snapshots/plugdraw.ppm plugdraw 450 480 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snapshots-${{ matrix.os }}
+          path: snapshots/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wezt-studio-${{ matrix.os }}
+          path: |
+            build/wezt-studio
+            build/Release/wezt-studio.exe
+          if-no-files-found: warn

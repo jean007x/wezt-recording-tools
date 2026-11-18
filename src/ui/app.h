@@ -126,6 +126,7 @@ class App {
   void showClips(bool on) { showClips_ = on; }
   void showVoiceBank(bool on) { showVoiceBank_ = on; }
   void showPluginParams(bool on) { showPlugParams_ = on; }
+  void selectPluginParam(int track, int insert, int param) { ppTrack_ = track; ppInsert_ = insert; ppParam_ = param; }
   void showPianoRoll(bool on) { showPianoRoll_ = on; }
   void showScore(bool on) { showScore_ = on; }
 

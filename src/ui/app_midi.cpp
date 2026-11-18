@@ -369,7 +369,7 @@ void App::drawPianoRollWindow() {
   ImGui::SameLine(); ImGui::SetNextItemWidth(60);
   if (ImGui::BeginCombo("##g", kRollGridNames[rollGridIdx_ % 4])) { for (int i = 0; i < 4; ++i) if (ImGui::Selectable(kRollGridNames[i], i == rollGridIdx_)) rollGridIdx_ = i; ImGui::EndCombo(); }
   ImGui::SameLine(); ImGui::SetNextItemWidth(90); ImGui::SliderFloat("##zoom", &rollPxPerBeat_, 16.f, 200.f, "zoom %.0f");
-  ImGui::SameLine(); ImGui::SetNextItemWidth(200);
+  ImGui::SetNextItemWidth(220);   // its own row: the toolbar above already fills the window
   if (ImGui::BeginCombo("##midiin", hwMidi_ ? hardwareMidiName().c_str() : "MIDI keyboard: none")) {   // device chooser
     if (ImGui::Selectable("none", !hwMidi_)) { closeHardwareMidi(); hwTried_ = true; }   // hwTried_: do not reopen it by itself
     const auto devices = midi::listMidiInputs();

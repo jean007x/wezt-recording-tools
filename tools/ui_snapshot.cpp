@@ -9,6 +9,8 @@
 
 #include <imgui.h>
 
+#include "dsp/effect_plugins.h"
+#include "instruments/builtin.h"
 #include "ui/app.h"
 
 namespace {
@@ -108,15 +110,32 @@ int main(int argc, char** argv) {
     app.session().newPlaylist(app.selectedTrack(), "Take 2", true);
     app.showClips(true);
   }
+  if (view == "plugparams" || view == "plugdraw") {   // an EQ with a drawn lane; "plugdraw" also clicks in the graph
+    app.setView(wezt::ui::MainView::Edit);
+    const auto t = app.session().trackIds().front();
+    wezt::plugins::PluginDescriptor d; d.name = "Wezt EQ"; d.format = wezt::plugins::Format::Builtin; d.bitness = 64;
+    app.session().addInsert(t, wezt::instruments::makeBuiltin(d), d);
+    const auto ps = app.session().track(t)->inserts[0].instance->parameters();
+    const unsigned pid = ps.empty() ? 0 : ps.back().id;
+    app.session().setParamAutomation(t, 0, pid, {{0, 0.2f}, {96000, 0.8f}, {192000, 0.4f}});
+    app.selectPluginParam(t, 0, static_cast<int>(pid));
+    app.showPluginParams(true);
+  }
   if (view == "immersive") { app.setView(wezt::ui::MainView::Edit); app.showImmersive(true); }
   app.setRange(static_cast<std::int64_t>(48000 * 1.0), static_cast<std::int64_t>(48000 * 2.5));
   Image img{W, H, std::vector<float>(static_cast<std::size_t>(W * H) * 3, 0.f)};
-  for (int frame = 0; frame < 3; ++frame) {   // the first frames settle window sizes
+  const int clickX = argc > 3 ? std::atoi(argv[3]) : -1, clickY = argc > 4 ? std::atoi(argv[4]) : -1;   // optional: a mouse click, to try the drawing
+  for (int frame = 0; frame < 6; ++frame) {   // the first frames settle window sizes
     io.DeltaTime = 1.f / 60.f;
+    if (clickX >= 0) {
+      io.AddMousePosEvent(static_cast<float>(clickX), static_cast<float>(clickY));
+      if (frame == 3) io.AddMouseButtonEvent(0, true);
+      if (frame == 4) io.AddMouseButtonEvent(0, false);
+    }
     ImGui::NewFrame();
     app.frame();
     ImGui::Render();
-    if (frame == 2) rasterize(ImGui::GetDrawData(), tex, tw, th, img);
+    if (frame == 5) rasterize(ImGui::GetDrawData(), tex, tw, th, img);
   }
   FILE* f = std::fopen(out, "wb");
   if (!f) { std::fprintf(stderr, "cannot write %s\n", out); return 1; }
