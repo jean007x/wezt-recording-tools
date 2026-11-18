@@ -26,13 +26,15 @@ static void frames(App& app, int n = 2) {
 }
 static void press(App& app, ImGuiKey key, bool ctrl = false, bool shift = false, bool alt = false) {
   ImGuiIO& io = ImGui::GetIO();
-  if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, true);
+  // on macOS Dear ImGui swaps Ctrl and Cmd: a real Cmd press arrives as Super and is read as Ctrl, so the test sends Super there
+  const ImGuiKey ctrlKey = io.ConfigMacOSXBehaviors ? ImGuiMod_Super : ImGuiMod_Ctrl;
+  if (ctrl) io.AddKeyEvent(ctrlKey, true);
   if (shift) io.AddKeyEvent(ImGuiMod_Shift, true);
   if (alt) io.AddKeyEvent(ImGuiMod_Alt, true);
   io.AddKeyEvent(key, true);
   frames(app, 1);
   io.AddKeyEvent(key, false);
-  if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, false);
+  if (ctrl) io.AddKeyEvent(ctrlKey, false);
   if (shift) io.AddKeyEvent(ImGuiMod_Shift, false);
   if (alt) io.AddKeyEvent(ImGuiMod_Alt, false);
   frames(app, 1);
