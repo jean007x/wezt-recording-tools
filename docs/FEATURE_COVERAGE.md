@@ -1,9 +1,9 @@
 # Coverage of the reference feature document
 
 "Done" means implemented and covered by an automated test. "Engine only" means the logic exists
-and is tested but no window or shortcut uses it yet. Nothing has been run on real Windows,
-macOS or a real GLFW window. Last full run (Linux): 26 of 26 tests pass in the normal, clang, AddressSanitizer+UBSan
-and ThreadSanitizer builds.
+and is tested but no window or shortcut uses it yet. CI (GitHub Actions) builds and tests it on real Windows and macOS runners: all 27 tests pass on Linux, Windows and macOS, the
+full app compiles and its UI test passes on all three, and real VST3/CLAP plug-ins are hosted on all three. Still never run:
+the window on a real display, real audio hardware, a real MIDI keyboard, commercial plug-ins, a real Claude Desktop session.
 
 ## Edit window
 
@@ -95,11 +95,11 @@ and ThreadSanitizer builds.
 
 ## Not built (the honest list)
 
-- **Hardware MIDI keyboard.** Never tried with a real keyboard. The WinMM and CoreMIDI backends are written but never compiled (no Windows/macOS here). Tested: parser, queue, the Linux raw-MIDI backend via a fake device, and the sustain pedal, pitch bend (±2 semitones) and mod wheel (vibrato) in the built-in synth. The sampler and third-party instruments get the same events; I did not test those. The device chooser is in the Piano Roll toolbar; compiled, never seen on screen.
+- **Hardware MIDI keyboard.** Never tried with a real keyboard. The WinMM and CoreMIDI backends compile on real Windows and macOS runners but have never received a message from a device. Tested: parser, queue, the Linux raw-MIDI backend via a fake device, and the sustain pedal, pitch bend (±2 semitones) and mod wheel (vibrato) in the built-in synth. The sampler and third-party instruments get the same events; I did not test those. The device chooser is in the Piano Roll toolbar; compiled, never seen on screen.
 - **Automation of instruments is per block**, not split (see the automation row). Effects are split in 32-frame pieces, not per sample.
 - **Automation lanes on the main timeline.** Drawing works in the Plugin Parameters window only, not on the Edit window's tracks.
-- **Real-world checks:** a real GLFW window, Windows, macOS, third-party plugins, a real Claude Desktop session, and a real 32-bit helper.
-- **Packaging:** installers and signed builds.
+- **Real-world checks still missing:** the window on a real display, real audio hardware, a real MIDI keyboard, commercial (third-party) plug-ins, a real Claude Desktop session, and a real 32-bit helper.
+- **Packaging:** unsigned archives are built by `release.yml`; there are no installers, and no code signing or macOS notarization (those need certificates).
 - **From the reference document:** Spot dialog, Scrubber, Pencil, Real-Time Properties, MPE, Routing Folders, per-track Commit/Freeze,
   Track Pin, pre/post-roll, count-off, QuickPunch, Extensions API, Speech-to-Text, Project Browser, Workspace, Video, AAF/OMF,
   AU and VST2 loading, AAX/RTAS/TDM (not hostable).

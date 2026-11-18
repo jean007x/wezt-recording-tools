@@ -10,11 +10,12 @@ names, icons or UI text and is not affiliated with either company. See
 
 ## Status (v0.7)
 
-Developed and tested on Linux. "Simulated" means the real Windows or macOS backend source runs
-against our own model of that OS API (`tests/sim/`); that checks the logic, not the real OS, so expect
-small fixes on first contact with real Windows and macOS. Nothing here has been built on either, and the
-GLFW window has not been opened on a real display. Last full run: 26 of 26 tests pass in the normal, clang,
-AddressSanitizer + UBSan and ThreadSanitizer builds. The per-feature list, including everything that is
+Developed on Linux; GitHub Actions now builds and tests it on real Windows (MSVC) and macOS (Apple clang) runners too.
+Verified there: the whole library and every test (27) on Linux, Windows and macOS; the full app with Dear ImGui and GLFW
+compiles and its UI test passes on all three; real VST3 (the Steinberg SDK's sample plug-ins) and CLAP plug-ins are hosted
+on all three; Linux also passes clang, AddressSanitizer + UBSan and ThreadSanitizer builds. Not verified: the window on a real
+display, sound on real audio hardware (WASAPI/CoreAudio against a real device; the runners have none), a real MIDI keyboard,
+commercial plug-ins, a real Claude Desktop session. The per-feature list, including everything that is
 not built, is `docs/FEATURE_COVERAGE.md`.
 
 | Area | State |
@@ -97,6 +98,8 @@ Plugin control for AI agents (parameters, intent tuning, CLAP `wezt.agent/1`): d
 cmake --preset asan && cmake --build --preset asan && ctest --preset asan
 ```
 
-`.github/workflows/ci.yml` runs those four presets on Linux, plus experimental Windows (MSVC) and macOS jobs.
-The Windows and macOS jobs are marked `continue-on-error` because the WASAPI and CoreAudio backends have never been
-built on those systems; remove that flag once they are green. MSVC gets `_USE_MATH_DEFINES`, `NOMINMAX` and `/utf-8`.
+`.github/workflows/ci.yml` runs those four presets on Linux, builds and tests on Windows (MSVC) and macOS, builds the full
+app on all three, and hosts real VST3/CLAP plug-ins on all three. `.github/workflows/release.yml` packs unsigned
+archives (app, `wezt-mcp`, `wezt_voice_takes`, docs) for the three systems: run it by hand or push a tag like `v0.8.0` to
+publish a release. Unsigned means Windows SmartScreen and macOS Gatekeeper will warn. MSVC gets `_USE_MATH_DEFINES`,
+`NOMINMAX` and `/utf-8`.
