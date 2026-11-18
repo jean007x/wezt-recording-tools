@@ -260,10 +260,11 @@ void App::drawTransport() {
   ImGui::SameLine(0, 4);
   {
     const ImVec2 p = ImGui::GetCursorScreenPos();
-    bgl->AddRectFilled(ImVec2(p.x, p.y + 4), ImVec2(p.x + 12, p.y + 12), col(0.16f, 0.17f, 0.19f), 2.f);
+    const bool inLit = hwActivityAt_ >= 0.0 && ImGui::GetTime() - hwActivityAt_ < 0.15;   // MIDI In: a keyboard message in the last 150 ms
+    bgl->AddRectFilled(ImVec2(p.x, p.y + 4), ImVec2(p.x + 12, p.y + 12), inLit ? col(0.35f, 0.9f, 0.4f) : col(0.16f, 0.17f, 0.19f), 2.f);
     bgl->AddRectFilled(ImVec2(p.x, p.y + 22), ImVec2(p.x + 12, p.y + 30), col(0.16f, 0.17f, 0.19f), 2.f);
     ImGui::Dummy(ImVec2(14, 30));
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("MIDI is not built yet");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip(hwMidi_ ? "MIDI In lights on keyboard messages. MIDI Out is not built." : "No MIDI keyboard connected (choose one in the Piano Roll). MIDI Out is not built.");
   }
   ImGui::SameLine(0, 14);
   ImGui::BeginGroup();

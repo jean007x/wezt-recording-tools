@@ -293,7 +293,7 @@ class App {
   int rollChar_ = 0; std::string rollBank_;   // voice character (0 = none) and voice bank name (empty = synthesizer)
   std::string bankName_ = "my voice", bankStatus_; int bankTrack_[9] = {-1, -1, -1, -1, -1, -1, -1, -1, -1}; int bankCons_[22] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}; bool bankConsent_ = false;
   std::string rollLyrics_; int rollVoice_ = 2; int rollChoir_ = 1; float rollHuman_ = 0.7f, rollRoom_ = 0.15f;
-  std::unique_ptr<midi::IMidiInput> hwMidi_; std::string hwTrack_; bool hwTried_ = false;
+  std::unique_ptr<midi::IMidiInput> hwMidi_; std::string hwTrack_; bool hwTried_ = false; double hwActivityAt_ = -1.0;
   int previewKey_ = -1; double previewOffAt_ = -1; std::string previewTrack_; float lastLiveTempo_ = 0.f;
   bool addAudioTrack(const std::string& name, const AudioBuffer& audio);
   int scoreClef_ = -1; int scoreBeatsPerBar_ = 4; int scoreKeyRoot_ = 0, scoreKeyMode_ = 0;

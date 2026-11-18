@@ -44,13 +44,14 @@ how the layout is checked on machines with no display. `wezt_ui_test` runs the U
 
 Checked here: all of the UI logic (commands, keys, clip editing, track add/remove/duplicate, every window
 drawing for several frames) under ASan and UBSan, and the layout through CPU-rendered screenshots.
-**Not checked here:** the GLFW + OpenGL window (`wezt-studio`) has only been syntax-checked (this machine
-has no GLFW or OpenGL headers), and the UI has never run on Windows or macOS. Expect small fixes.
+**Checked in CI:** `wezt-studio` (GLFW + OpenGL) builds and the UI test passes on Linux, Windows and macOS runners.
+**Not checked:** the window on a real display and the app on a real desktop. Expect small fixes.
 
 Known limits: structural edits (add/remove/duplicate track, inserts, sends) stop the audio device for
 a moment, because the graph may only change while it is stopped. File paths are typed in a text box
-(no native file dialog yet). The sampler is played from its on-screen keyboard; MIDI input and
-MIDI clips are not built yet.
+(no native file dialog yet). MIDI works: parts are edited in the Piano Roll and Score windows and played through the
+Sampler, Wezt Synth or a hosted VST3/CLAP instrument; a hardware MIDI keyboard plays the selected part's instrument
+(see "MIDI keyboard" below). MIDI output (sending to hardware) and recording MIDI from the keyboard into a part are not built.
 
 ## Look
 
@@ -90,8 +91,8 @@ Top to bottom: title strip ("Edit: <session>"); toolbar; overview strip; the wor
 - **Toolbar, row 1:** edit modes in a dark green box (Shuffle, Spot, Slip, Grid; the active one is lit), five zoom presets
   (click recalls, Shift+click stores), zoom out/in, waveform height, track height, tools (smart, zoom, trim, selector, grabber;
   scrub and pencil are shown dimmed). **Row 2:** transport, scroll-with-playhead, **+ / - / Dup track buttons**, add marker,
-  Edit / Mix / Float mix, tempo. **Right:** main counter in green, sub counter, start / end / length, MIDI in/out lights (MIDI is
-  not built yet), grid value and nudge value with nudge buttons.
+  Edit / Mix / Float mix, tempo. **Right:** main counter in green, sub counter, start / end / length, MIDI In light (flashes on keyboard
+  messages) and MIDI Out light (always dark: MIDI output is not built), grid value and nudge value with nudge buttons.
 - **Overview strip:** the whole session as coloured lines per track; the lighter box is what the Edit window shows; drag in it to scroll.
 - **Left list:** TRACKS (click to select, dot to hide or show) and GROUPS. A group links mute, solo, record-arm and fader moves
   across its members; `<ALL>` is a switch for all tracks. Groups, markers and hidden tracks are kept while the app runs; they are not
@@ -101,7 +102,7 @@ Top to bottom: title strip ("Edit: <session>"); toolbar; overview strip; the wor
   read/off, input and output boxes, vol and pan fields. Clips show a name bar, a clip-gain tag and fades.
 - **Mix:** a full window, or **Float mix** to put it over the Edit window; strips have a colour band, inserts, sends, I/O, automation
   mode, pan knob, fader with LED meters, and the name.
-- **Bottom tabs:** MIDI Editor and Clip Effects (dimmed, not built), **Sampler** and **Immersive** (ours).
+- **Bottom tabs:** **Piano Roll**, **Score**, **Clips**, **Sampler** and **Immersive** (ours); the strip also says that clip effects are not built.
 
 ## Drawing plug-in automation
 

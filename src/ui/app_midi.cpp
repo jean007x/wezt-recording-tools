@@ -224,6 +224,7 @@ void App::pollHardwareMidi() {
     return selPart_ >= 0 ? findTrackByName(*session_, midiParts_[static_cast<std::size_t>(selPart_)].liveTrack) : nullptr;
   };
   while (hwMidi_->queue().pop(m)) {
+    hwActivityAt_ = ImGui::GetTime();   // lights the MIDI In indicator in the transport
     if (m.type == midi::MidiMessage::NoteOn) {
       if (selPart_ < 0) continue;
       MidiPart& part = midiParts_[static_cast<std::size_t>(selPart_)];

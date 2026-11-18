@@ -5,8 +5,8 @@ What Wezt Recording Tools can do with each format, as of this build. "Tested" me
 
 | Format | Windows | macOS | Status |
 |---|---|---|---|
-| VST3 | yes | yes | **Hosted and tested** against a real plugin (Linux). Windows/macOS module loaders come from Steinberg's SDK and are selected by CMake; not built or run on those systems. |
-| CLAP | yes | yes | **Hosted and tested** against a real CLAP plugin binary (Linux). |
+| VST3 | yes | yes | **Hosted and tested** against real plugins, including note input for instruments (`test_vst3_midi`): on Linux, Windows and macOS in CI, using the Steinberg SDK's sample plug-ins. Third-party commercial plug-ins are untested. |
+| CLAP | yes | yes | **Hosted and tested** against real CLAP plugin binaries, including a CLAP synth driven by note events (`test_clap_midi`): on Linux, Windows and macOS in CI. |
 | 32-bit plugins | yes | no | **Bridge built and tested** with a same-bitness helper: output is bit-identical to running in-process, and a crashed helper yields silence instead of taking the session down. A real 32-bit helper has **not** been built or run. |
 | AU | no | yes | Found by the scanner; **no loader yet**. |
 | VST2 | yes | yes | Found by the scanner; **no loader yet**. Steinberg no longer licenses the VST2 SDK, so a loader needs your own headers. |
@@ -28,8 +28,10 @@ Both SDKs are MIT licensed. The VST3 SDK needs CMake 3.25+. To run the plugin te
 real VST3, add `-DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=ON` and
 `-DWEZT_VST3_TEST_PLUGIN=<path to again-sample-accurate.vst3>`.
 
-Not supported yet in the hosts: MIDI/note events (so no instruments), side-chain buses, and
-plugin editor windows.
+MIDI note, controller and pitch-bend events are supported in both hosts, so VST3 and CLAP instruments work
+(`acceptsMidi()` / `handleMidi()`; the built-in Sampler and Wezt Synth use the same path). Not supported yet in the
+hosts: side-chain buses (extra input ports are fed silence) and plug-in editor windows (parameters are edited in
+Wezt's own Plugin Parameters window).
 
 ## "Every plugin installed and found" (`PluginLibrary`)
 

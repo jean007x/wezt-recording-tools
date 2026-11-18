@@ -26,4 +26,4 @@ verify each against the current release before committing to scope.
 3. **Editing and interchange**: waveform editing, warp, AAF/OMF/MIDI import-export, clips
 4. **Plugins and instruments**: VST3, CLAP, AU hosting, 32-bit bridge, built-ins
 5. **ML and notation**: stems, score editor
-6. **Qt UI** in parallel from phase 2
+6. **UI** (Dear ImGui, replacing the earlier Qt plan) in parallel from phase 2

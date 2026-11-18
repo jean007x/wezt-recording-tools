@@ -7,7 +7,7 @@
 2. **session**: tracks, clips, regions, tempo map, versioned serialization.
 3. **io**: WAV/BWF now; AAF, OMF, MIDI, MusicXML later.
 4. **plugins**: format-agnostic host interfaces, bridge protocol.
-5. **ui**: Qt 6, separate target, talks to the engine through a command queue.
+5. **ui**: Dear ImGui (immediate mode) on GLFW + OpenGL, separate targets (`wezt_ui` library, `wezt-studio` app), talks to the engine through a command queue. See `UI.md`.
 
 ## Real-time rules
 

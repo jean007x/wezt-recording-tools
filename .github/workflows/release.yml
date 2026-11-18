@@ -28,8 +28,21 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWEZT_BUILD_UI=ON -DWEZT_IMGUI_DIR="$RUNNER_TEMP/imgui" -DWEZT_GLFW_DIR="$RUNNER_TEMP/glfw" -DGLFW_BUILD_WAYLAND=OFF
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWEZT_BUILD_UI=ON -DWEZT_IMGUI_DIR="$RUNNER_TEMP/imgui" -DWEZT_GLFW_DIR="$RUNNER_TEMP/glfw" -DGLFW_BUILD_WAYLAND=OFF -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
           cmake --build build --config Release -j 3 --target wezt-studio wezt-mcp wezt_voice_takes
+      - name: Check the binaries (macOS minimum version and architectures, Windows GUI subsystem)
+        shell: bash
+        run: |
+          S=$(find build -type f \( -name wezt-studio -o -name wezt-studio.exe \) | head -1)
+          echo "checking $S"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            lipo -archs "$S"
+            otool -l "$S" | grep -A4 LC_BUILD_VERSION
+            lipo -archs "$S" | grep -q arm64 && lipo -archs "$S" | grep -q x86_64
+            otool -l "$S" | grep -A4 LC_BUILD_VERSION | grep -q "minos 12.0"
+          elif [ "${{ runner.os }}" = "Windows" ]; then
+            python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); pe=struct.unpack_from('<I',d,0x3c)[0]; sub=struct.unpack_from('<H',d,pe+24+68)[0]; print('PE subsystem', sub, '(2 = GUI, 3 = console)'); sys.exit(0 if sub==2 else 1)" "$S"
+          fi
       - name: Pack
         shell: bash
         run: |
