@@ -234,7 +234,7 @@ static void testGraphEditing() {
     AudioBuffer in(1, 100), out(1, 100);
     for (std::size_t i = 0; i < 100; ++i) in.channel(0)[i] = 1.f;
     gain.process(in, out);
-    CHECK(out.channel(0)[0] > 0.9f && out.channel(0)[99] == 0.f);
+    CHECK(out.channel(0)[0] > 0.9f && std::fabs(out.channel(0)[99]) < 1e-6f);   // not exactly 0 where the compiler fuses multiply-add (arm64)
     bool mono = true;
     for (int i = 1; i < 100; ++i) mono = mono && out.channel(0)[i] <= out.channel(0)[i - 1];
     CHECK(mono);  // smooth fade, no single-sample jump

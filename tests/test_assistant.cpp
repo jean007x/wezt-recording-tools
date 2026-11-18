@@ -121,7 +121,7 @@ void testLlmClient() {
   CHECK(contains(body, "say \\\"hi\\\"\\nnew\\\\line\\t\\u0001"));
   // reply parsing: escapes, unicode, surrogate pair
   std::string t, e;
-  CHECK(LocalHttpModel::parseReply(R"({"choices":[{"message":{"role":"assistant","content":"a\"b\né 🎵"}}]})", t, e));
+  CHECK(LocalHttpModel::parseReply("{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"a\\\"b\\n\xc3\xa9 \xf0\x9f\x8e\xb5\"}}]}", t, e));   // plain literal: MSVC rejects this text inside a raw string
   CHECK(t == "a\"b\n\xc3\xa9 \xf0\x9f\x8e\xb5");
   CHECK(!LocalHttpModel::parseReply(R"({"error":{"message":"x"}})", t, e));
   CHECK(!LocalHttpModel::parseReply(R"({"choices":[{"message":{"content":"unterminated)", t, e));
