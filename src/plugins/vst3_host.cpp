@@ -5,7 +5,9 @@
 #include <mutex>
 #include <cstring>
 
+#include "base/source/fobject.h"
 #include "pluginterfaces/base/ipluginbase.h"
+#include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
@@ -98,6 +100,26 @@ std::vector<Vst3ClassInfo> describeVst3(const std::string& modulePath, std::stri
   return out;
 }
 
+// The host side of the controller's conversation: the plug-in tells us when its latency or parameter list changed.
+// Edits a plug-in makes on its own (performEdit) are accepted and ignored: this host has no plug-in windows to originate them.
+class ComponentHandler : public FObject, public Vst::IComponentHandler {
+ public:
+  tresult PLUGIN_API beginEdit(Vst::ParamID) override { return kResultOk; }
+  tresult PLUGIN_API performEdit(Vst::ParamID, Vst::ParamValue) override { return kResultOk; }
+  tresult PLUGIN_API endEdit(Vst::ParamID) override { return kResultOk; }
+  tresult PLUGIN_API restartComponent(int32 flags) override {
+    if (flags & Vst::kLatencyChanged) latencyChanged.store(true, std::memory_order_release);
+    if (flags & Vst::kReloadComponent) reloadRequested.store(true, std::memory_order_release);
+    return kResultOk;
+  }
+  std::atomic<bool> latencyChanged{false}, reloadRequested{false};
+  OBJ_METHODS(ComponentHandler, FObject)
+  DEFINE_INTERFACES
+    DEF_INTERFACE(Vst::IComponentHandler)
+  END_DEFINE_INTERFACES(FObject)
+  REFCOUNT_METHODS(FObject)
+};
+
 struct Vst3Instance::Impl {
   VST3::Hosting::Module::Ptr module;  // declared first: destroyed last
   IPtr<Vst::PlugProvider> provider;
@@ -125,6 +147,7 @@ struct Vst3Instance::Impl {
   std::size_t midiN = 0;
   std::array<std::uint16_t, 128> held{};  // per key: bit per channel that has a note on, so AllNotesOff can release exactly those
   FUnknownPtr<Vst::IMidiMapping> midiMap;
+  IPtr<ComponentHandler> handler;
 
   void deactivate() {
     if (!active) return;
@@ -140,6 +163,7 @@ Vst3Instance::Vst3Instance() : impl_(std::make_unique<Impl>()) {}
 Vst3Instance::~Vst3Instance() {
   if (impl_) {
     impl_->deactivate();
+    if (impl_->controller) impl_->controller->setComponentHandler(nullptr);
     impl_->processor = nullptr;
     impl_->controller = nullptr;
     impl_->component = nullptr;
@@ -185,7 +209,11 @@ std::unique_ptr<Vst3Instance> Vst3Instance::load(const std::string& modulePath, 
       d.component->getBusInfo(Vst::kAudio, Vst::kOutput, 0, bi) == kResultOk)
     d.outChannels = bi.channelCount;
   d.midiIn = d.component->getBusCount(Vst::kEvent, Vst::kInput) > 0;
-  if (d.controller) d.midiMap = FUnknownPtr<Vst::IMidiMapping>(d.controller);
+  if (d.controller) {
+    d.midiMap = FUnknownPtr<Vst::IMidiMapping>(d.controller);
+    d.handler = owned(new ComponentHandler());
+    d.controller->setComponentHandler(d.handler);
+  }
   return inst;
 }
 
@@ -331,6 +359,8 @@ void Vst3Instance::handleMidi(const MidiEvent* events, std::size_t count) {
   // Keep what an earlier call left (a block that did not run), then append.
   for (std::size_t i = 0; i < count && d.midiN < d.midi.size(); ++i) d.midi[d.midiN++] = events[i];
 }
+
+bool Vst3Instance::takeLatencyChanged() { return impl_->handler && impl_->handler->latencyChanged.exchange(false, std::memory_order_acq_rel); }
 
 std::size_t Vst3Instance::latencySamples() const { return impl_->processor ? impl_->processor->getLatencySamples() : 0; }
 

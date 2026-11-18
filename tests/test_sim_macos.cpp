@@ -211,7 +211,33 @@ static void testErrorsAndClamping() {
   CHECK(liveCFObjects() == 0);
 }
 
+// The device is unplugged while running: the backend must report it, stop listening, and start cleanly on a new device.
+static void testDeviceDies() {
+  hardware();
+  Rig r(2);
+  audio::AudioConfig cfg;
+  cfg.bufferFrames = 256;
+  cfg.inChannels = 0;
+  std::string err;
+  CHECK(r.dev->open(cfg, r.engine.get(), &err));
+  CHECK(r.dev->start(&err));
+  const AudioDeviceID out = device("builtin-out")->id;
+  CHECK(listenerCount(out) == 1);
+  CHECK(!r.dev->lost());
+  killDevice(out);
+  CHECK(r.dev->lost());
+  r.dev->stop();
+  CHECK(listenerCount(out) == 0);              // the listener is removed on stop
+  hardware();                                   // a fresh set of devices: plugged in again
+  CHECK(r.dev->open(cfg, r.engine.get(), &err));
+  CHECK(r.dev->start(&err));
+  CHECK(!r.dev->lost());                        // cleared by start()
+  r.dev->stop();
+  CHECK(liveCFObjects() == 0);
+}
+
 int main() {
+  testDeviceDies();
   testListing();
   testAggregateForSeparateDevices();
   testInterfaceExclusive();

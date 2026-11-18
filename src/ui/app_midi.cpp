@@ -179,6 +179,13 @@ bool App::playMidiPartLive(int i) {
 }
 
 void App::syncLiveMidi() {
+  if (session_->pollPluginLatency()) {   // a plug-in changed its latency on its own: re-compute the compensation with the audio stopped
+    const bool was = deviceRunning_;
+    if (was) device_->stop();
+    session_->applyPluginLatency();
+    std::string e;
+    if (was) device_->start(&e);
+  }
   const double bpm = std::max(30.f, tempo_), sr = session_->sampleRate();
   for (MidiPart& part : midiParts_) {
     if (part.liveTrack.empty()) continue;

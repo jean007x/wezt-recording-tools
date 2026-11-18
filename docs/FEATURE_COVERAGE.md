@@ -11,6 +11,13 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
   that a plug-in was muted, and catching a plug-in that crashes or hangs (that is what the 32-bit bridge's process separation is for;
   the 64-bit hosts run plug-ins in-process).
 
+- **Plug-in latency changes (built, tested):** a VST3 plug-in's restartComponent(kLatencyChanged) and a CLAP plug-in's host latency
+  `changed()` are noticed; the app stops the audio briefly and re-computes the delay compensation. Tested with the CLAP test plug-in
+  and a probe plug-in; the real VST3 sample plug-ins never change their latency, so that path is exercised only up to registering the handler.
+- **Device loss (built, tested against the simulators):** WASAPI (invalidated device, no event for 0.5 s) and CoreAudio (the DeviceIsAlive
+  listener) report a stream that died; the app shows a message, stops the transport and tries to reopen the system default device every 2 s.
+  Real unplugging on real hardware has not been tried. Not built: following a default-device change while the stream still works.
+
 ## Edit window
 
 | Feature | State |

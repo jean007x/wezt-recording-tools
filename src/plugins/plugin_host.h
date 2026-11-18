@@ -54,6 +54,10 @@ struct IPluginInstance : Processor {
   // True for plugins that make sound from notes. The track's sequencer, and the key preview, call
   // handleMidi() on the AUDIO thread immediately before process() for the same block, with the
   // events' sample offsets inside that block. It must not allocate or block.
+  // ---- plugin-initiated changes (control thread) ----
+  // True once after the plugin announced that its latency changed (VST3 restartComponent / CLAP latency changed); the
+  // caller then runs Session::applyPluginLatency() while the audio is stopped.
+  virtual bool takeLatencyChanged() { return false; }
   virtual bool acceptsMidi() const { return false; }
   virtual void handleMidi(const MidiEvent* events, std::size_t count) { (void)events; (void)count; }
 

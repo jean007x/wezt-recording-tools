@@ -132,6 +132,9 @@ int main() {
       double parameterNormalized(unsigned) const override { return v.load(); }
       bool automateParameter(unsigned, double n) override { v.store(n); return true; }
       bool supportsAutomation() const override { return true; }
+      std::atomic<bool> latFlag{false}; std::atomic<std::size_t> lat{0};
+      std::size_t latencySamples() const override { return lat.load(); }
+      bool takeLatencyChanged() override { return latFlag.exchange(false); }   // reported once, like the real hosts
       void process(const AudioBuffer& in, AudioBuffer& out) override {
         log->push_back({out.frames, v.load()});
         for (std::size_t c = 0; c < out.channels; ++c) for (std::size_t i = 0; i < out.frames; ++i) out.channel(c)[i] = in.channel(std::min(c, in.channels - 1))[i];
@@ -142,6 +145,16 @@ int main() {
     s.addClip(t, clipOf(sine(440, 48000, 0.1f), 0));
     plugins::PluginDescriptor d; d.name = "Probe"; d.format = plugins::Format::Builtin;
     CHECK(s.addInsert(t, std::make_unique<Probe>(&log), d));
+    {  // a plug-in announcing a new latency: the session notices and re-computes the compensation
+      auto* probe = static_cast<Probe*>(s.track(t)->inserts[0].instance);
+      CHECK(!s.pollPluginLatency() && !s.applyPluginLatency());
+      probe->lat.store(50); probe->latFlag.store(true);
+      CHECK(s.pollPluginLatency());                 // collected, still waiting for the audio to be stopped
+      CHECK(s.pollPluginLatency());
+      CHECK(s.applyPluginLatency());
+      CHECK(s.graph().outputLatency() >= 50);
+      CHECK(!s.pollPluginLatency() && !s.applyPluginLatency());   // applied once
+    }
     // a jump between frames 100 and 101 inside the first 256-frame block, then a steady value
     CHECK(s.setParamAutomation(t, 0, 0, {{0, 0.2f}, {100, 0.2f}, {101, 0.8f}, {1000000, 0.8f}}));
     Rig r(s); r.e->transport().play();

@@ -361,6 +361,21 @@ bool Session::rewire() {
 
 // ============================== inserts and sends ==============================
 
+bool Session::pollPluginLatency() {
+  for (auto& tp : tracks_)
+    if (tp)
+      for (auto& s : tp->inserts)
+        if (s.instance && s.instance->takeLatencyChanged()) latencyDirty_ = true;
+  return latencyDirty_;
+}
+
+bool Session::applyPluginLatency() {
+  if (!pollPluginLatency()) return false;
+  latencyDirty_ = false;
+  graph_.refreshLatency();
+  return true;
+}
+
 bool Session::addInsert(TrackId id, std::unique_ptr<plugins::IPluginInstance> plugin, const plugins::PluginDescriptor& d, int position) {
   Track* t = track(id);
   if (!t) return false;

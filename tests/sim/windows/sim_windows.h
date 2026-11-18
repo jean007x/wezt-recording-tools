@@ -38,7 +38,10 @@ constexpr HRESULT AUDCLNT_E_BUFFER_TOO_LARGE = static_cast<HRESULT>(0x88890006u)
                   AUDCLNT_E_EXCLUSIVE_MODE_NOT_ALLOWED = static_cast<HRESULT>(0x8889000Eu),
                   AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED = static_cast<HRESULT>(0x88890019u),
                   AUDCLNT_E_INVALID_DEVICE_PERIOD = static_cast<HRESULT>(0x88890020u),
-                  AUDCLNT_E_NOT_INITIALIZED = static_cast<HRESULT>(0x88890001u);
+                  AUDCLNT_E_NOT_INITIALIZED = static_cast<HRESULT>(0x88890001u),
+                  AUDCLNT_E_DEVICE_INVALIDATED = static_cast<HRESULT>(0x88890004u),
+                  AUDCLNT_E_SERVICE_NOT_RUNNING = static_cast<HRESULT>(0x88890010u),
+                  AUDCLNT_E_RESOURCES_INVALIDATED = static_cast<HRESULT>(0x88890026u);
 
 struct GUID {
   uint32_t Data1;

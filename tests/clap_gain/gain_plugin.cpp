@@ -30,6 +30,7 @@ struct Gain {
   clap_plugin_t plugin;
   const clap_host_t* host;
   double gain = 1.0;
+  std::uint32_t latency = 0;
 };
 Gain* self(const clap_plugin_t* p) { return static_cast<Gain*>(p->plugin_data); }
 
@@ -112,6 +113,7 @@ std::uint32_t agentList(const clap_plugin_t*, char* out, std::uint32_t cap) {
   return agentWrite(
       "[{\"name\":\"set_gain_db\",\"description\":\"Set the output gain in decibels\","
       "\"input_schema\":{\"type\":\"object\",\"properties\":{\"gain_db\":{\"type\":\"number\"}},\"required\":[\"gain_db\"]}},"
+      "{\"name\":\"set_latency\",\"description\":\"Test hook: change the reported latency\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"samples\":{\"type\":\"number\"}}}},"
       "{\"name\":\"big_report\",\"description\":\"Returns a long text (tests large answers)\",\"input_schema\":{\"type\":\"object\"}},"
       "{\"name\":\"always_fails\",\"description\":\"Fails on purpose\",\"input_schema\":{\"type\":\"object\"}}]",
       out, cap);
@@ -126,13 +128,23 @@ std::uint32_t agentCall(const clap_plugin_t* p, const char* name, const char* ar
     g->gain = std::pow(10.0, db / 20.0);
     return agentWrite("gain set to " + std::to_string(db) + " dB", out, cap);
   }
+  if (!std::strcmp(name, "set_latency")) {   // test hook: change the latency and announce it, as a look-ahead plug-in would
+    const char* k = std::strstr(args, "\"samples\"");
+    const char* colon = k ? std::strchr(k, ':') : nullptr;
+    g->latency = colon ? static_cast<std::uint32_t>(std::atoi(colon + 1)) : 0;
+    if (g->host && g->host->get_extension) {
+      const auto* hl = static_cast<const clap_host_latency_t*>(g->host->get_extension(g->host, CLAP_EXT_LATENCY));
+      if (hl && hl->changed) hl->changed(g->host);
+    }
+    return agentWrite("latency set", out, cap);
+  }
   if (!std::strcmp(name, "big_report")) return agentWrite(std::string(40000, 'x'), out, cap);
   agentWrite("this tool always fails", out, cap);
   return WEZT_AGENT_FAILED;
 }
 const wezt_plugin_agent_t kAgent = {agentList, agentCall};
 
-std::uint32_t latencyGet(const clap_plugin_t*) { return 0; }
+std::uint32_t latencyGet(const clap_plugin_t* p) { return self(p)->latency; }
 const clap_plugin_latency_t kLatency = {latencyGet};
 
 // ---- plugin ----

@@ -152,6 +152,7 @@ class WasapiDevice : public AudioDevice {
   ~WasapiDevice() override { stop(); }
   std::string backendName() const override { return cfg_.exclusive ? "WASAPI (exclusive)" : "WASAPI (shared)"; }
   std::string notice() const override { return notice_; }
+  bool lost() const override { return lost_.load(std::memory_order_acquire); }
 
   bool open(const AudioConfig& requested, AudioCallback* cb, std::string* error) override {
     if (!cb || requested.outChannels == 0 || requested.bufferFrames == 0) {
@@ -168,6 +169,7 @@ class WasapiDevice : public AudioDevice {
     if (!cb_) { if (error) *error = "device not opened"; return false; }
     quit_ = false;
     notice_.clear();
+    lost_.store(false);
     // The wake event belongs to this thread (start/stop), not to the audio thread: stop() signals it while the audio
     // thread may be on its way out, so the audio thread must never close it (ThreadSanitizer found that race).
     if (!wake_) wake_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -353,10 +355,18 @@ class WasapiDevice : public AudioDevice {
 
   static constexpr EDataFlow eRecord() { return eCapture; }
 
+  // A stream whose device was unplugged, disabled or taken over fails with one of these; it never recovers by itself.
+  void noteFailure(HRESULT h) {
+    if (h == AUDCLNT_E_DEVICE_INVALIDATED || h == AUDCLNT_E_SERVICE_NOT_RUNNING || h == AUDCLNT_E_RESOURCES_INVALIDATED) lost_.store(true, std::memory_order_release);
+  }
+
   void drainCapture() {
     if (!in_.capture) return;
     UINT32 packet = 0;
-    while (SUCCEEDED(in_.capture->GetNextPacketSize(&packet)) && packet > 0) {
+    for (;;) {
+      const HRESULT ph = in_.capture->GetNextPacketSize(&packet);
+      if (FAILED(ph)) { noteFailure(ph); break; }
+      if (packet == 0) break;
       BYTE* data = nullptr; UINT32 n = 0; DWORD flags = 0;
       if (FAILED(in_.capture->GetBuffer(&data, &n, &flags, nullptr, nullptr))) break;
       n = std::min<UINT32>(n, static_cast<UINT32>(capScratch_[0].size()));
@@ -373,12 +383,14 @@ class WasapiDevice : public AudioDevice {
     UINT32 avail = out_.bufFrames;
     if (!out_.exclusive) {
       UINT32 padding = 0;
-      if (FAILED(out_.client->GetCurrentPadding(&padding))) return;
+      const HRESULT ph = out_.client->GetCurrentPadding(&padding);
+      if (FAILED(ph)) { noteFailure(ph); return; }
       avail = out_.bufFrames - padding;
     }
     if (avail == 0) return;
     BYTE* data = nullptr;
-    if (FAILED(out_.render->GetBuffer(avail, &data))) return;
+    const HRESULT gh = out_.render->GetBuffer(avail, &data);
+    if (FAILED(gh)) { noteFailure(gh); return; }
     UINT32 done = 0;
     const unsigned bps = out_.fmt.bytesPerSample();
     while (done < avail) {
@@ -399,9 +411,14 @@ class WasapiDevice : public AudioDevice {
     if (capEvent) handles[count++] = in_.event;
     handles[count++] = wake_;
     while (!quit_) {
-      const DWORD w = WaitForMultipleObjects(count, handles, FALSE, 2000);
+      const DWORD w = WaitForMultipleObjects(count, handles, FALSE, 500);
       if (quit_) break;
-      if (w == WAIT_TIMEOUT || w == WAIT_FAILED) continue;
+      if (w == WAIT_TIMEOUT || w == WAIT_FAILED) {   // no event for half a second: a healthy stream never does that, so ask the device
+        UINT32 padding = 0;
+        if (out_.client) noteFailure(out_.client->GetCurrentPadding(&padding));
+        if (in_.capture) { UINT32 packet = 0; noteFailure(in_.capture->GetNextPacketSize(&packet)); }
+        continue;
+      }
       drainCapture();  // always drain first so input is as fresh as possible
       if (w == WAIT_OBJECT_0) fillRender();
     }
@@ -411,6 +428,7 @@ class WasapiDevice : public AudioDevice {
   AudioCallback* cb_ = nullptr;
   std::thread thread_;
   std::atomic<bool> quit_{false};
+  std::atomic<bool> lost_{false};
   bool running_ = false;
   HANDLE wake_ = nullptr;
   Stream out_, in_;

@@ -130,6 +130,11 @@ class Session {
   // ---- inserts and sends ----
   // Adds a plugin at `position` in the track's insert chain (-1 = end). Plugin latency is
   // compensated automatically against the other tracks.
+  // Plug-ins can announce a latency change at any time. pollPluginLatency() (control thread, cheap, any time) collects the
+  // announcements and returns true while a change is waiting. applyPluginLatency() then re-computes the delay compensation;
+  // call it only while the audio is stopped (the compensation delays are re-sized). Returns true when it changed something.
+  bool pollPluginLatency();
+  bool applyPluginLatency();
   bool addInsert(TrackId t, std::unique_ptr<plugins::IPluginInstance> plugin, const plugins::PluginDescriptor& d, int position = -1);
   bool removeInsert(TrackId t, std::size_t index);
   // Plugin parameter automation. Points are (frame, normalized value 0..1). Replaces the lane; no points removes it.
@@ -198,6 +203,7 @@ class Session {
   std::size_t channels_, maxBlock_;
   const RtContext* ctx_ = nullptr;
   std::vector<std::unique_ptr<Track>> tracks_;
+  bool latencyDirty_ = false;
   std::vector<std::unique_ptr<Bus>> buses_;
   std::vector<std::unique_ptr<Vca>> vcas_;
   edit::MemoryLocations memory_;

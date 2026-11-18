@@ -104,7 +104,13 @@ void entryDeinit(const clap_plugin_entry_t* e, const std::string& key) {
 }
 
 // ---- minimal host ----------------------------------------------------------------------------
-const void* hostGetExtension(const clap_host_t*, const char*) { return nullptr; }  // we offer no host extensions yet
+// host_data points at this instance's flag: the plug-in says its latency changed (any thread), the control thread collects it.
+void hostLatencyChanged(const clap_host_t* h) { if (h && h->host_data) static_cast<std::atomic<bool>*>(h->host_data)->store(true, std::memory_order_release); }
+const clap_host_latency_t kHostLatency = {hostLatencyChanged};
+const void* hostGetExtension(const clap_host_t*, const char* id) {
+  if (id && std::strcmp(id, CLAP_EXT_LATENCY) == 0) return &kHostLatency;
+  return nullptr;   // no other host extensions yet
+}
 void hostNoop(const clap_host_t*) {}
 
 clap_host_t makeHost() {
@@ -171,6 +177,7 @@ struct ClapInstance::Impl {
   std::string key;            // identifies the library for the init/deinit count
   bool entryInited = false;   // true only after a successful init(): deinit() is owed exactly then
   const clap_plugin_t* plugin = nullptr;
+  std::atomic<bool> latencyChanged{false};
   clap_host_t host = makeHost();
   const clap_plugin_params_t* params = nullptr;
   const clap_plugin_state_t* state = nullptr;
@@ -242,6 +249,7 @@ std::unique_ptr<ClapInstance> ClapInstance::load(const std::string& path, std::s
   }
   if (!chosen) return fail("plugin id not found: " + pluginId);
 
+  d.host.host_data = &d.latencyChanged;   // the host struct is part of the instance, so its address is stable
   d.plugin = factory->create_plugin(factory, &d.host, chosen->id);
   if (!d.plugin) return fail(std::string("create_plugin failed for ") + chosen->id);
   if (!d.plugin->init(d.plugin)) {
@@ -438,6 +446,8 @@ void ClapInstance::process(const AudioBuffer& in, AudioBuffer& out) {
     std::copy(d.outPtrs[src], d.outPtrs[src] + frames, out.channel(c));
   }
 }
+
+bool ClapInstance::takeLatencyChanged() { return impl_->latencyChanged.exchange(false, std::memory_order_acq_rel); }
 
 std::size_t ClapInstance::latencySamples() const {
   return impl_->latency ? impl_->latency->get(impl_->plugin) : 0;

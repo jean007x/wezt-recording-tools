@@ -170,6 +170,7 @@ struct Client : ComObj<IAudioClient> {
   }
   HRESULT GetCurrentPadding(UINT32* frames) override {
     std::lock_guard<std::mutex> l(g_mu);
+    if (ep->removed) return AUDCLNT_E_DEVICE_INVALIDATED;
     *frames = padding;
     return S_OK;
   }
@@ -229,6 +230,7 @@ struct Client : ComObj<IAudioClient> {
     while (running) {
       std::this_thread::sleep_for(interval);
       if (!running) break;
+      if (ep->removed) continue;   // an unplugged device is silent: no data moves and no event fires
       if (ep->capture) {
         std::vector<std::vector<float>> planar(channels, std::vector<float>(period));
         std::vector<const float*> ptrs;

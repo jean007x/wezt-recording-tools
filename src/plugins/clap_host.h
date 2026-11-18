@@ -26,6 +26,7 @@ class ClapInstance : public IPluginInstance {
   void prepare(double sampleRate, std::size_t maxFrames) override;
   void process(const AudioBuffer& in, AudioBuffer& out) override;  // audio thread
   std::size_t latencySamples() const override;
+  bool takeLatencyChanged() override;
 
   // MIDI: true when the plug-in has a note input (CLAP note events, or MIDI bytes). Events arrive on the
   // audio thread just before process() and are delivered at their sample offsets.

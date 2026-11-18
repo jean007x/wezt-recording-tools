@@ -164,6 +164,7 @@ class App {
   bool previewNote(int pitch, bool down, int velocity = 100);
   int previewingKey() const { return previewKey_; }   // the key sounding from a click or preview, or -1
   void syncLiveMidi();
+  void watchAudioDevice();   // the sound device was unplugged or taken over: say so, and reconnect when it is back
   bool openHardwareMidi(std::size_t index);   // a connected MIDI keyboard plays the selected part's instrument
   void closeHardwareMidi();
   std::string hardwareMidiName() const { return hwMidi_ ? hwMidi_->name() : std::string(); }
@@ -236,7 +237,8 @@ class App {
   std::unique_ptr<audio::NullDevice> nullDevice_;
   Keymap keymap_;
   std::string status_ = "Ready";
-  bool quit_ = false, deviceRunning_ = false;
+  bool quit_ = false, deviceRunning_ = false, deviceLost_ = false;
+  double deviceRetryAt_ = 0.0;
 
   Tool tool_ = Tool::Selector;
   EditMode mode_ = EditMode::Slip;

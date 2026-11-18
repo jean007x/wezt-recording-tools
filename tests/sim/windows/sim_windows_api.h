@@ -71,6 +71,7 @@ struct Endpoint {
   // Exclusive-mode hardware model (the "Advanced" tab switches and driver quirks)
   bool propsKnown = true, allowExclusive = true, exclusivePriority = false;
   bool inUseByOther = false;
+  bool removed = false;     // the device was unplugged: calls fail with AUDCLNT_E_DEVICE_INVALIDATED and no more events arrive
   std::vector<FormatSpec> native;  // formats the driver accepts in exclusive mode
   unsigned alignFrames = 0;        // exclusive buffers must be a multiple of this (0 = no constraint)
   unsigned minPeriodFrames = 48;

@@ -76,6 +76,32 @@ bool App::startAudio(std::string* message) {
   return true;
 }
 
+// A stream whose device vanished stops calling us. Tell the user, then keep trying (every 2 s) to open the system default
+// device again, so unplugging and re-plugging headphones, or waking the computer, just works.
+void App::watchAudioDevice() {
+  if (!device_) return;
+  const double now = ImGui::GetTime();
+  if (deviceRunning_ && device_->lost()) {
+    device_->stop();
+    deviceRunning_ = false;
+    deviceLost_ = true;
+    deviceRetryAt_ = now + 1.0;
+    engine_->transport().stop();
+    setStatus("Audio device lost (unplugged or taken over by another program). Looking for it again...");
+  }
+  if (deviceLost_ && now >= deviceRetryAt_) {
+    deviceRetryAt_ = now + 2.0;
+    audio::AudioConfig cfg;
+    cfg.sampleRate = static_cast<unsigned>(session_->sampleRate()); cfg.bufferFrames = 256; cfg.inChannels = 2; cfg.outChannels = 2;
+    std::string err;
+    if (device_->open(cfg, engine_.get(), &err) && device_->start(&err)) {
+      deviceRunning_ = true;
+      deviceLost_ = false;
+      setStatus("Audio device is back: " + device_->backendName() + " running");
+    }
+  }
+}
+
 void App::stopAudio() {
   if (device_ && deviceRunning_) device_->stop();
   deviceRunning_ = false;
@@ -436,6 +462,7 @@ void App::updateMeters() {
 }
 
 void App::frame() {
+  watchAudioDevice();
   updateMeters();
   syncLiveMidi();
   for (session::TrackId id : session_->trackIds()) if (instruments::Sampler* sm = samplerOn(id)) sm->setTempo(static_cast<double>(tempo_));

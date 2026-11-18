@@ -49,9 +49,9 @@ int main(int argc, char** argv) {
     CHECK(bp.size() == 1 && bp[0].min == 0.0 && bp[0].max == 1.0 && bp[0].steps == 0);
     CHECK(base.parameterText(gainId, 0.5) == "0.500");  // the plugin's own text, not ours
     auto tools = base.aiTools();
-    CHECK(tools.size() == 3);
-    CHECK(tools.size() == 3 && tools[0].name == "set_gain_db" && tools[0].description.find("decibels") != std::string::npos);
-    CHECK(tools.size() == 3 && tools[0].inputSchemaJson.find("gain_db") != std::string::npos);
+    CHECK(tools.size() == 4);
+    CHECK(tools.size() == 4 && tools[0].name == "set_gain_db" && tools[0].description.find("decibels") != std::string::npos);
+    CHECK(tools.size() == 4 && tools[0].inputSchemaJson.find("gain_db") != std::string::npos);
     bool ok = false;
     std::string r = base.callAiTool("set_gain_db", "{\"gain_db\": -6}", ok);
     CHECK(ok && r.find("-6") != std::string::npos);
@@ -105,6 +105,17 @@ int main(int argc, char** argv) {
   CHECK(std::fabs(peakOf(out) - 0.25f) < 0.01f);
   CHECK(!plug->loadState({}));
   CHECK(plug->latencySamples() == 0);
+  CHECK(!plug->takeLatencyChanged());
+  {  // the plug-in announces a new latency through the host's latency extension; the host notices once, and the graph can follow
+    bool ok = false;
+    plug->callAiTool("set_latency", "{\"samples\": 100}", ok);
+    CHECK(ok);
+    CHECK(plug->takeLatencyChanged());
+    CHECK(!plug->takeLatencyChanged());           // reported once
+    CHECK(plug->latencySamples() == 100);
+    g.refreshLatency();
+    CHECK(g.outputLatency() == 100);
+  }
 
   std::printf(failures ? "FAILED\n" : "clap tests passed\n");
   return failures;

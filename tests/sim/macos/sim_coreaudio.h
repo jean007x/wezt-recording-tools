@@ -40,7 +40,8 @@ enum : AudioObjectPropertySelector {
   kAudioStreamPropertyLatency,
   kAudioDevicePropertyHogMode,
   kAudioDevicePropertyNominalSampleRate,
-  kAudioDevicePropertyBufferFrameSize
+  kAudioDevicePropertyBufferFrameSize,
+  kAudioDevicePropertyDeviceIsAlive
 };
 
 struct AudioObjectPropertyAddress {
@@ -91,6 +92,9 @@ enum : AudioUnitPropertyID {
 };
 constexpr AudioUnitScope kAudioUnitScope_Global = 0, kAudioUnitScope_Input = 1, kAudioUnitScope_Output = 2;
 
+typedef OSStatus (*AudioObjectPropertyListenerProc)(AudioObjectID, UInt32, const AudioObjectPropertyAddress*, void*);
+OSStatus AudioObjectAddPropertyListener(AudioObjectID, const AudioObjectPropertyAddress*, AudioObjectPropertyListenerProc, void*);
+OSStatus AudioObjectRemovePropertyListener(AudioObjectID, const AudioObjectPropertyAddress*, AudioObjectPropertyListenerProc, void*);
 OSStatus AudioObjectGetPropertyDataSize(AudioObjectID, const AudioObjectPropertyAddress*, UInt32, const void*, UInt32*);
 OSStatus AudioObjectGetPropertyData(AudioObjectID, const AudioObjectPropertyAddress*, UInt32, const void*, UInt32*, void*);
 OSStatus AudioObjectSetPropertyData(AudioObjectID, const AudioObjectPropertyAddress*, UInt32, const void*, UInt32, const void*);
@@ -146,6 +150,8 @@ struct FakeDevice {
   bool refuseHog = false;
   bool isPrivate = false;
   bool isAggregate = false;
+  bool alive = true;   // false after killDevice(): the hardware went away
+  std::vector<std::pair<AudioObjectPropertyListenerProc, void*>> listeners;
   // aggregate bookkeeping, for assertions
   std::string masterUid;
   std::vector<std::pair<std::string, int>> subDevices;  // uid, drift-compensation flag
@@ -156,6 +162,8 @@ AudioDeviceID addDevice(const std::string& uid, const std::string& name, unsigne
 FakeDevice* device(const std::string& uid);
 FakeDevice* deviceById(AudioDeviceID id);
 void setDefault(bool output, const std::string& uid);
+void killDevice(AudioDeviceID id);   // unplug: marks it dead and calls the DeviceIsAlive listeners
+int listenerCount(AudioDeviceID id);
 int aggregateCount();
 long liveCFObjects();
 // Runs the started unit's render callback `blocks` times at the device buffer size. Each input

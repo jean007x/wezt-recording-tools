@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
+#include <atomic>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -152,6 +153,7 @@ class CoreAudioDevice : public AudioDevice {
   ~CoreAudioDevice() override { stop(); }
   std::string backendName() const override { return actual_.exclusive ? "CoreAudio (exclusive)" : "CoreAudio (HAL)"; }
   std::string notice() const override { return notice_; }
+  bool lost() const override { return lost_.load(std::memory_order_acquire); }
 
   bool open(const AudioConfig& requested, AudioCallback* cb, std::string* error) override {
     if (!cb || requested.outChannels == 0 || requested.bufferFrames == 0) {
@@ -166,6 +168,7 @@ class CoreAudioDevice : public AudioDevice {
   bool start(std::string* error) override {
     if (unit_) return true;
     notice_.clear();
+    lost_.store(false);
     auto fail = [&](const std::string& msg, OSStatus s = 0) {
       if (error) *error = "CoreAudio: " + msg + (s ? " (OSStatus " + std::to_string(s) + ")" : "");
       teardown();
@@ -304,6 +307,9 @@ class CoreAudioDevice : public AudioDevice {
     actual_.inputLatencyFrames = inChans_ ? hardwareLatency(inDev, kAudioObjectPropertyScopeInput) + frames : 0;
     cb_->deviceAboutToStart(actual_);
 
+    // Tell us when the hardware goes away (unplugged, disabled): the callback then simply stops, so the owner must be told.
+    watch(outDev);
+    if (inDev != kAudioObjectUnknown && inDev != outDev) watch(inDev);
     s = AudioOutputUnitStart(unit_);
     if (s != noErr) return fail("start failed", s);
     return true;
@@ -313,6 +319,16 @@ class CoreAudioDevice : public AudioDevice {
   AudioConfig actualConfig() const override { return actual_; }
 
  private:
+  static OSStatus aliveChanged(AudioObjectID dev, UInt32, const AudioObjectPropertyAddress*, void* self) {
+    UInt32 alive = 1, sz = sizeof alive;
+    const AudioObjectPropertyAddress a = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+    if (AudioObjectGetPropertyData(dev, &a, 0, nullptr, &sz, &alive) != noErr || alive == 0) static_cast<CoreAudioDevice*>(self)->lost_.store(true, std::memory_order_release);
+    return noErr;
+  }
+  void watch(AudioDeviceID dev) {
+    const AudioObjectPropertyAddress a = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+    if (AudioObjectAddPropertyListener(dev, &a, &CoreAudioDevice::aliveChanged, this) == noErr) watched_.push_back(dev);
+  }
   // A private aggregate (invisible to other apps) that merges the chosen output and input devices.
   // The output device is the clock master; the input device is drift-corrected against it.
   AudioDeviceID makeAggregate(AudioDeviceID outDev, AudioDeviceID inDev) {
@@ -386,6 +402,11 @@ class CoreAudioDevice : public AudioDevice {
   }
 
   void teardown() {
+    for (AudioDeviceID dev : watched_) {
+      const AudioObjectPropertyAddress a = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+      AudioObjectRemovePropertyListener(dev, &a, &CoreAudioDevice::aliveChanged, this);
+    }
+    watched_.clear();
     if (unit_) {
       AudioOutputUnitStop(unit_);
       AudioUnitUninitialize(unit_);
@@ -406,7 +427,8 @@ class CoreAudioDevice : public AudioDevice {
   unsigned inChans_ = 0, outChans_ = 0;
   AudioBufferList* inList_ = nullptr;
   AudioObjectID aggregate_ = kAudioObjectUnknown;
-  std::vector<AudioDeviceID> hogged_;
+  std::vector<AudioDeviceID> hogged_, watched_;
+  std::atomic<bool> lost_{false};
   std::vector<std::vector<float>> inScratch_, outScratch_;
   std::vector<const float*> inPtrs_;
   std::vector<float*> outPtrs_;

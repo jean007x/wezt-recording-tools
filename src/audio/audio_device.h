@@ -65,6 +65,9 @@ class AudioDevice {
   virtual AudioConfig actualConfig() const = 0;
   // Non-fatal messages from start(), e.g. "exclusive mode refused (device busy); using shared mode".
   virtual std::string notice() const { return {}; }
+  // True once the running stream died on its own: the device was unplugged, disabled, or taken over by the system. The
+  // callback is no longer being called. The owner should stop() and try open()+start() again (cleared by start()).
+  virtual bool lost() const { return false; }
 };
 
 // WASAPI on Windows, CoreAudio on macOS, nullptr elsewhere.

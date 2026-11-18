@@ -118,6 +118,18 @@ void setDefault(bool output, const std::string& uid) {
   FakeDevice* d = device(uid);
   (output ? g_defOut : g_defIn) = d ? d->id : 0;
 }
+void killDevice(AudioDeviceID id) {
+  FakeDevice* d = deviceById(id);
+  if (!d) return;
+  d->alive = false;
+  const AudioObjectPropertyAddress a = {kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+  const auto copy = d->listeners;   // a listener may remove itself
+  for (const auto& l : copy) l.first(id, 1, &a, l.second);
+}
+int listenerCount(AudioDeviceID id) {
+  FakeDevice* d = deviceById(id);
+  return d ? static_cast<int>(d->listeners.size()) : -1;
+}
 int aggregateCount() {
   int n = 0;
   for (auto& kv : g_devices) n += kv.second.isAggregate;
@@ -212,6 +224,7 @@ static bool fetch(AudioObjectID obj, const AudioObjectPropertyAddress* a, const 
         return true;
       }
       case kAudioDevicePropertyHogMode: put(&d->hogOwner, sizeof(pid_t)); return true;
+      case kAudioDevicePropertyDeviceIsAlive: { UInt32 v = d->alive ? 1 : 0; put(&v, sizeof v); return true; }
       case kAudioDevicePropertyNominalSampleRate: put(&d->rate, sizeof(double)); return true;
       case kAudioDevicePropertyBufferFrameSize: { UInt32 f = d->bufFrames; put(&f, sizeof f); return true; }
     }
@@ -221,6 +234,20 @@ static bool fetch(AudioObjectID obj, const AudioObjectPropertyAddress* a, const 
     if (const FakeDevice* d = findDev(obj / 100)) { put(&d->streamLatency, sizeof(UInt32)); return true; }
   }
   return false;
+}
+
+OSStatus AudioObjectAddPropertyListener(AudioObjectID obj, const AudioObjectPropertyAddress*, AudioObjectPropertyListenerProc proc, void* user) {
+  FakeDevice* d = deviceById(obj);
+  if (!d || !proc) return -1;
+  d->listeners.push_back({proc, user});
+  return noErr;
+}
+OSStatus AudioObjectRemovePropertyListener(AudioObjectID obj, const AudioObjectPropertyAddress*, AudioObjectPropertyListenerProc proc, void* user) {
+  FakeDevice* d = deviceById(obj);
+  if (!d) return -1;
+  for (auto it = d->listeners.begin(); it != d->listeners.end(); ++it)
+    if (it->first == proc && it->second == user) { d->listeners.erase(it); return noErr; }
+  return -1;
 }
 
 OSStatus AudioObjectGetPropertyDataSize(AudioObjectID obj, const AudioObjectPropertyAddress* a, UInt32, const void* q, UInt32* size) {

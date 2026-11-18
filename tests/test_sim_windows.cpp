@@ -272,7 +272,33 @@ static void testInputFallbackKeepsOutput() {
   expectClean();
 }
 
+// The headphones are unplugged while playing: the device must report it (and only then), and a new stream must start cleanly.
+static void testDeviceRemoved() {
+  hardware();
+  {
+    Rig r;
+    CHECK(r.start());
+    r.engine->transport().play();
+    waitMs(150);
+    CHECK(!r.dev->lost());                       // healthy streams are never reported lost
+    endpoint(L"out-main")->removed = true;
+    int waited = 0;
+    while (!r.dev->lost() && waited < 3000) { waitMs(50); waited += 50; }
+    std::printf("device reported lost after %d ms\n", waited);
+    CHECK(r.dev->lost());
+    r.dev->stop();
+    endpoint(L"out-main")->removed = false;       // plugged in again
+    CHECK(r.start());                            // open+start again: the flag is cleared
+    CHECK(!r.dev->lost());
+    waitMs(150);
+    CHECK(!r.dev->lost());
+    r.dev->stop();
+  }
+  expectClean();
+}
+
 int main() {
+  testDeviceRemoved();
   testListing();
   testSharedPlayback();
   testExclusivePlayback();

@@ -31,6 +31,7 @@ class Vst3Instance : public IPluginInstance {
   void prepare(double sampleRate, std::size_t maxFrames) override;
   void process(const AudioBuffer& in, AudioBuffer& out) override;
   std::size_t latencySamples() const override;
+  bool takeLatencyChanged() override;
 
   // IPluginInstance
   std::size_t parameterCount() const override;
