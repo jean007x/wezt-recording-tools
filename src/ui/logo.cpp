@@ -30,8 +30,8 @@ std::vector<float> blur(const std::vector<float>& src, int w, int h, int radius)
 
 float lerp(float a, float b, float t) { return a + (b - a) * t; }
 
-void ramp(float t, float* rgb) {   // deep bronze -> rich gold -> bright gold -> cream highlight
-  static const float stops[5][3] = {{0.17f, 0.09f, 0.015f}, {0.50f, 0.30f, 0.05f}, {0.86f, 0.62f, 0.15f}, {1.00f, 0.84f, 0.42f}, {1.00f, 0.97f, 0.82f}};
+void ramp(float t, float* rgb) {   // deep umber -> champagne gold -> pale highlight (less saturated than "yellow" gold: it reads as the real metal)
+  static const float stops[5][3] = {{0.07f, 0.045f, 0.02f}, {0.36f, 0.26f, 0.12f}, {0.72f, 0.56f, 0.30f}, {0.93f, 0.80f, 0.55f}, {1.00f, 0.95f, 0.84f}};
   t = std::clamp(t, 0.f, 1.f) * 4.f;
   const int i = std::min(3, static_cast<int>(t));
   const float f = t - static_cast<float>(i);
@@ -40,17 +40,6 @@ void ramp(float t, float* rgb) {   // deep bronze -> rich gold -> bright gold ->
 
 float sstep(float a, float b, float x) { const float t = std::clamp((x - a) / (b - a), 0.f, 1.f); return t * t * (3.f - 2.f * t); }
 float hash2(int x, int y) { unsigned n = static_cast<unsigned>(x) * 374761393u + static_cast<unsigned>(y) * 668265263u; n = (n ^ (n >> 13)) * 1274126177u; return static_cast<float>((n ^ (n >> 16)) & 0xffff) / 65535.f; }
-
-// A studio reflection for polished metal, looked up by how much the surface tilts up (+1) or down (-1): a bright softbox above,
-// a dark horizon line, a warm floor below. The hard contrast between them is what reads as expensive, mirror-polished gold.
-float studio(float up) {
-  const float s = std::clamp(up * 2.1f, -1.f, 1.f);
-  const float box = sstep(0.30f, 0.62f, s);                    // the softbox
-  const float dark = 1.f - sstep(0.0f, 0.22f, std::fabs(s + 0.02f));   // the horizon band
-  float v = lerp(0.42f, 0.56f, sstep(-0.15f, 0.3f, s));        // warm floor rising to the mid tone
-  v = lerp(v, 0.98f, box);
-  return lerp(v, 0.10f, dark * 0.85f);
-}
 
 // 32 px of room on every side of the mask for the soft shadow to fall into.
 constexpr int kPad = 32;
@@ -89,54 +78,47 @@ LogoImage makeLogo(LogoStyle style) {
   int W = 0, H = 0;
   const std::vector<float> base = paddedCoverage(W, H);
   const std::vector<float> cov = thickened(base, W, H);
-  const std::vector<float> soft = blur(cov, W, H, 3), wide = blur(cov, W, H, 8), broad = blur(cov, W, H, 14);
-  // The soft drop shadow: the shape moved down and to the right, blurred hard.
+  // Machined metal, not a puffy emboss: the face of every stroke is flat and clean; only a narrow chamfer (a few pixels) along each edge
+  // catches the light. Edges facing the light are bright, edges facing away are dark, and that crisp contrast is what reads as
+  // precision-made and expensive.
+  const std::vector<float> soft = blur(cov, W, H, 2), face = blur(cov, W, H, 10);
   std::vector<float> moved(cov.size(), 0.f);
   for (int y = 0; y < H; ++y)
-    for (int x = 0; x < W; ++x) { const int sx = x - 8, sy = y - 13; if (sx >= 0 && sy >= 0) moved[static_cast<std::size_t>(y * W + x)] = cov[static_cast<std::size_t>(sy * W + sx)]; }
-  const std::vector<float> shadow = blur(moved, W, H, 6);
-  auto Ht = [&](int x, int y) {   // a rounded, tube-like height for every stroke
-    x = std::clamp(x, 0, W - 1); y = std::clamp(y, 0, H - 1);
-    const std::size_t i = static_cast<std::size_t>(y * W + x);
-    return soft[i] * 0.9f + wide[i] * 1.0f + broad[i] * 0.5f;
-  };
+    for (int x = 0; x < W; ++x) { const int sx = x - 6, sy = y - 10; if (sx >= 0 && sy >= 0) moved[static_cast<std::size_t>(y * W + x)] = cov[static_cast<std::size_t>(sy * W + sx)]; }
+  const std::vector<float> shadow = blur(moved, W, H, 9);   // a soft, wide, faint shadow: depth without a muddy halo
+  auto Ht = [&](int x, int y) { x = std::clamp(x, 0, W - 1); y = std::clamp(y, 0, H - 1); return soft[static_cast<std::size_t>(y * W + x)]; };
   LogoImage im; im.w = W; im.h = H; im.rgba.resize(static_cast<std::size_t>(W * H) * 4);
-  const float lx = -0.55f, ly = -0.62f, lz = 0.56f, ll = std::sqrt(lx * lx + ly * ly + lz * lz);
+  const float lx = -0.60f, ly = -0.68f, lz = 0.42f, ll = std::sqrt(lx * lx + ly * ly + lz * lz);
   for (int y = 0; y < H; ++y)
     for (int x = 0; x < W; ++x) {
       const std::size_t idx = static_cast<std::size_t>(y * W + x);
-      const float dx = (Ht(x + 1, y) - Ht(x - 1, y)) * 5.4f, dy = (Ht(x, y + 1) - Ht(x, y - 1)) * 5.4f;
+      const float c = cov[idx];
+      const float dx = (Ht(x + 1, y) - Ht(x - 1, y)) * 9.f, dy = (Ht(x, y + 1) - Ht(x, y - 1)) * 9.f;
+      const float slope = std::clamp(std::sqrt(dx * dx + dy * dy) * 0.55f, 0.f, 1.f);       // 0 on the flat face, 1 on the chamfer
       const float nl = std::sqrt(dx * dx + dy * dy + 1.f);
       const float nx = -dx / nl, ny = -dy / nl, nz = 1.f / nl;
-      const float diff = std::clamp((nx * lx + ny * ly + nz * lz) / ll, 0.f, 1.f);
-      const float spec = std::pow(diff, 22.f);
-      const float env = studio(-ny);                                        // ny is "down" on screen: -ny is up
-      const float yn = static_cast<float>(y - kPad) / static_cast<float>(kLogoMaskH);
-      const float sweep = 0.5f + 0.5f * std::cos(yn * 6.2832f * 1.0f + 0.5f);   // a broad gradient over the whole mark
-      const float grain = (hash2(0, y) - 0.5f) * 0.045f + (hash2(x / 29, y / 3) - 0.5f) * 0.03f;   // faint brushed streaks
-      const float c = cov[idx];
-      const float edge = 4.f * c * (1.f - c);                               // 1 on the anti-aliased rim, 0 inside and outside
-      float t = 0.20f + 0.50f * env + 0.20f * diff + 0.10f * sweep + 0.46f * spec + grain;
-      t *= 1.f - 0.50f * edge;                                              // a fine dark outline around every stroke
-      t += 0.20f * sstep(0.10f, 0.0f, Ht(x + 1, y + 1) - Ht(x - 1, y - 1)) * c * c;   // a hairline of light on the top-left lip
+      const float lit = (nx * lx + ny * ly + nz * lz) / ll;                                  // -1..1: toward / away from the light
+      const float edgeLight = std::clamp(lit, 0.f, 1.f), edgeDark = std::clamp(-lit, 0.f, 1.f);
+      // a long, soft diagonal sheen across the whole mark, like a strip light being reflected in a flat polished face
+      const float dn = (static_cast<float>(x - kPad) / static_cast<float>(kLogoMaskW) * 0.62f + static_cast<float>(y - kPad) / static_cast<float>(kLogoMaskH) * 0.38f);
+      const float sheen = 0.5f + 0.5f * std::cos((dn - 0.30f) * 6.2832f * 1.15f);
+      const float brushed = (hash2(0, y) - 0.5f) * 0.03f + (hash2(x / 40, y / 2) - 0.5f) * 0.015f;
+      float t = 0.40f + 0.20f * sheen + brushed;                        // the flat face
+      t = lerp(t, 0.52f + 0.48f * std::pow(edgeLight, 0.7f), slope);    // chamfer facing the light: bright
+      t = lerp(t, 0.12f, slope * edgeDark * 0.85f);                     // chamfer facing away: dark
       float rgb[3]; ramp(t, rgb);
       if (style == LogoStyle::Black) {
-        // Black lacquer: almost no body colour, only the reflections of the studio show (white-silver streaks on black), and a fine
-        // gold rim runs along every edge like a gold inlay.
-        const float hl = std::pow(std::clamp(env, 0.f, 1.f), 2.4f);
-        float tb = 0.02f + 0.50f * hl + 0.10f * diff + 0.55f * spec + grain * 0.6f;
-        tb *= 1.f - 0.35f * edge;
-        static const float bs[5][3] = {{0.006f, 0.006f, 0.008f}, {0.035f, 0.035f, 0.045f}, {0.17f, 0.17f, 0.20f}, {0.62f, 0.63f, 0.70f}, {1.f, 1.f, 1.f}};
-        const float f4 = std::clamp(tb, 0.f, 1.f) * 4.f; const int bi = std::min(3, static_cast<int>(f4)); const float bf = f4 - static_cast<float>(bi);
-        float body[3]; for (int k = 0; k < 3; ++k) body[k] = lerp(bs[bi][k], bs[bi + 1][k], bf);
-        const float rim = c * (1.f - sstep(0.62f, 0.92f, soft[idx]));   // within ~2 px of an edge
-        for (int k = 0; k < 3; ++k) rgb[k] = lerp(body[k], rgb[k], std::clamp(rim * 0.95f, 0.f, 1.f));
+        // Satin black face with the same soft sheen (barely there), and the chamfer picks up gold: a fine gold inlay around every stroke.
+        const float tb = 0.035f + 0.075f * sheen + brushed * 0.5f;
+        float body[3] = {0.012f + tb * 0.9f, 0.012f + tb * 0.9f, 0.016f + tb};
+        for (int k = 0; k < 3; ++k) rgb[k] = lerp(body[k], rgb[k], std::clamp(slope * 1.15f, 0.f, 1.f));
+        (void)face;
       }
-      const float sh = std::clamp(shadow[idx] * 0.70f, 0.f, 1.f) * (1.f - c);
+      const float sh = std::clamp(shadow[idx] * 0.55f, 0.f, 1.f) * (1.f - c);
       const float a = c + sh;
       unsigned char* p = &im.rgba[idx * 4];
       for (int k = 0; k < 3; ++k) {
-        const float col = a > 0.f ? (std::clamp(rgb[k], 0.f, 1.f) * c) / a : 0.f;   // shadow is black, gold is gold
+        const float col = a > 0.f ? (std::clamp(rgb[k], 0.f, 1.f) * c) / a : 0.f;   // shadow is black, metal is metal
         p[k] = static_cast<unsigned char>(std::clamp(col, 0.f, 1.f) * 255.f + 0.5f);
       }
       p[3] = static_cast<unsigned char>(std::clamp(a, 0.f, 1.f) * 255.f + 0.5f);

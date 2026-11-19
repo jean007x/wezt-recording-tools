@@ -74,66 +74,33 @@ void Intro::paint(double t) const {
   const ImVec2 size = ImGui::GetIO().DisplaySize;
   const ImVec2 c(size.x * 0.5f, size.y * 0.5f);
   const float tf = static_cast<float>(t);
-  const float W0 = std::min(size.x * 0.73f, size.y * 0.68f * aspect_), H0 = W0 / aspect_;
-  const float d = 1.6f * W0;
+  const float W0 = std::min(size.x * 0.66f, size.y * 0.60f * aspect_), H0 = W0 / aspect_;
+  const float d = 1.7f * W0;
+  auto col = [](int r, int g, int b, float a) { return IM_COL32(r, g, b, static_cast<int>(clamp01(a) * 255.f + 0.5f)); };
 
   if (t < kIntroOpen) {
-    dl->AddRectFilled(ImVec2(0, 0), size, IM_COL32(5, 5, 8, 255));
+    // A black room and nothing else. The only things in it: one soft pool of warm light that grows with the logo, a faint polished floor,
+    // and, when the logo lands, one thin streak of light across the frame. Restraint is the point.
+    dl->AddRectFilled(ImVec2(0, 0), size, IM_COL32(3, 3, 5, 255));
     const Pose p = poseAt(t);
-    const float u = clamp01(tf / static_cast<float>(kIntroGrowEnd));
-    const float lit = std::pow(p.scale, 0.7f) * p.alpha;   // how much light the logo throws on the room
-
-    // slow rays of light fanning out from behind the logo, and soft out-of-focus lights drifting in the dark
-    for (int k = 0; k < 16; ++k) {
-      const float a0 = tf * 0.05f + static_cast<float>(k) * (2.f * kPi / 16.f), w = 0.07f + 0.05f * hash(k + 91);
-      const float R = std::max(size.x, size.y) * 0.9f;
-      dl->AddTriangleFilled(c, ImVec2(c.x + std::cos(a0 - w) * R, c.y + std::sin(a0 - w) * R), ImVec2(c.x + std::cos(a0 + w) * R, c.y + std::sin(a0 + w) * R),
-                            IM_COL32(255, 190, 90, static_cast<int>(clamp01(0.022f * lit * (0.5f + hash(k + 40))) * 255.f + 0.5f)));
+    const float lit = std::pow(p.scale, 0.8f) * p.alpha;
+    for (int k = 0; k < 48; ++k) {
+      const float r = (0.12f + 1.10f * static_cast<float>(k) / 47.f) * W0 * std::max(0.06f, p.scale);
+      dl->AddCircleFilled(c, r, col(200, 165, 110, 0.0042f * lit), 80);
     }
-    for (std::uint32_t i = 0; i < 18; ++i) {
-      const float bx = hash(i * 11 + 1) * size.x, by = hash(i * 11 + 2) * size.y;
-      const float x = std::fmod(bx + tf * (6.f + 10.f * hash(i * 11 + 3)), size.x), y = by - 12.f * std::sin(tf * 0.5f + static_cast<float>(i));
-      const float r = (14.f + 40.f * hash(i * 11 + 4)) * (size.y / 900.f);
-      const int al = static_cast<int>(clamp01(0.10f * lit * (0.3f + hash(i * 11 + 5))) * 255.f);
-      dl->AddCircleFilled(ImVec2(x, y), r, IM_COL32(255, 200, 110, al), 24);
-      dl->AddCircle(ImVec2(x, y), r, IM_COL32(255, 220, 150, al * 2), 24, 1.f);
+    const float breath = tf >= static_cast<float>(kIntroGrowEnd) && tf < static_cast<float>(kIntroGrowEnd) + 1.4f ? std::exp(-(tf - static_cast<float>(kIntroGrowEnd)) * 2.2f) : 0.f;
+    if (breath > 0.01f) {   // the landing: a single hairline of light, and the room brightens for an instant
+      const float h = 1.5f + 2.5f * breath;
+      const ImU32 z = col(255, 235, 200, 0.f), m = col(255, 238, 205, 0.85f * breath);
+      dl->AddRectFilledMultiColor(ImVec2(0, c.y - h * 0.5f), ImVec2(c.x, c.y + h * 0.5f), z, m, m, z);
+      dl->AddRectFilledMultiColor(ImVec2(c.x, c.y - h * 0.5f), ImVec2(size.x, c.y + h * 0.5f), m, z, z, m);
+      for (int k = 0; k < 20; ++k) dl->AddCircleFilled(c, (0.2f + 0.9f * static_cast<float>(k) / 19.f) * W0, col(255, 225, 170, 0.006f * breath), 80);
     }
 
-    // a gold glow behind the logo that grows with it (stacked translucent discs)
-    const float glow = std::pow(p.scale, 0.8f) * (t < kIntroGrowEnd ? 0.5f + 0.5f * u : 1.f) * p.alpha;
-    for (int k = 0; k < 64; ++k) {   // many faint steps so the glow shades smoothly instead of showing rings
-      const float r = (0.10f + 1.0f * static_cast<float>(k) / 63.f) * W0 * std::max(0.05f, p.scale);
-      dl->AddCircleFilled(c, r, IM_COL32(235, 125, 30, static_cast<int>(clamp01(0.0075f * glow) * 255.f + 0.5f)), 72);
-    }
-    // dust drifting outward while it approaches
-    if (t < kIntroGrowEnd)
-      for (std::uint32_t i = 0; i < 70; ++i) {
-        const float a = hash(i * 3 + 1) * 2.f * kPi, rr = (0.08f + hash(i * 3 + 2)) * W0 * 0.75f * std::pow(u, 1.2f);
-        const float al = 0.55f * u * (0.3f + 0.7f * hash(i * 3 + 3)) * (1.f - smooth(0.9f, 1.f, u));
-        dl->AddCircleFilled(ImVec2(c.x + std::cos(a) * rr * 1.5f, c.y + std::sin(a) * rr * 0.8f), 0.8f + 1.6f * hash(i * 7 + 5), gold(al, 1.1f), 8);
-      }
-    // impact: shock rings, a horizontal flare, sparks
-    if (t >= kIntroGrowEnd && t < kIntroGrowEnd + 1.1) {
-      const float s = (tf - static_cast<float>(kIntroGrowEnd)) / 1.1f;
-      dl->AddCircle(c, W0 * 0.95f * std::pow(s, 0.55f), gold(0.85f * std::pow(1.f - s, 1.5f)), 96, 1.f + 5.f * (1.f - s));
-      dl->AddCircle(c, W0 * 0.55f * std::pow(s, 0.45f), gold(0.55f * std::pow(1.f - s, 1.5f), 1.2f), 96, 1.f + 2.f * (1.f - s));
-      const float fh = 1.f + 6.f * std::pow(1.f - s, 2.f), fa = std::pow(1.f - s, 1.6f);
-      const ImU32 z = gold(0.f), m = gold(0.9f * fa, 1.3f);
-      dl->AddRectFilledMultiColor(ImVec2(c.x - size.x * 0.5f, c.y - fh * 0.5f), ImVec2(c.x, c.y + fh * 0.5f), z, m, m, z);
-      dl->AddRectFilledMultiColor(ImVec2(c.x, c.y - fh * 0.5f), ImVec2(c.x + size.x * 0.5f, c.y + fh * 0.5f), m, z, z, m);
-      for (std::uint32_t i = 0; i < 90; ++i) {
-        const float a = hash(i * 5 + 11) * 2.f * kPi, sp = (0.25f + 1.1f * hash(i * 5 + 12)) * W0;
-        const float r0 = sp * std::pow(s, 0.5f), r1 = sp * std::pow(std::max(0.f, s - 0.06f), 0.5f);
-        const float al = std::pow(1.f - s, 1.3f);
-        dl->AddLine(ImVec2(c.x + std::cos(a) * r0, c.y + std::sin(a) * r0 * 0.7f), ImVec2(c.x + std::cos(a) * r1, c.y + std::sin(a) * r1 * 0.7f), gold(al, 1.3f), 1.6f);
-      }
-    }
-
-    // the logo: 48 vertical strips, each projected in 3D (spin about the vertical axis, a little tilt, perspective)
     if (p.alpha > 0.002f && p.scale > 0.f && gold_) {
       const float cy = std::cos(p.yaw), sy = std::sin(p.yaw), cx = std::cos(p.tilt), sx = std::sin(p.tilt);
-      // zo is depth in the logo's own space (0 = the face, positive = toward the back): it turns with the logo, so the thickness
-      // shows as side walls whenever the logo is not facing straight at the viewer.
+      // zo is depth in the logo's own space (0 = the face, positive = toward the back); it turns with the logo, so the thickness shows
+      // as side walls whenever the logo is not facing straight at the viewer.
       auto proj = [&](float lx, float ly, float zo = 0.f) {
         const float x = lx * W0 * p.scale, y = ly * H0 * p.scale, zz = zo * W0 * p.scale;
         const float x1 = x * cy + zz * sy, z1 = -x * sy + zz * cy;
@@ -141,21 +108,21 @@ void Intro::paint(double t) const {
         const float k = d / std::max(0.2f * d, d + z2);
         return ImVec2(c.x + x1 * k, c.y + y2 * k);
       };
-      const float face = 0.5f + 0.5f * std::pow(std::fabs(cy), 0.6f);   // turned edge-on it goes dark, like metal away from the light
+      const float face = 0.45f + 0.55f * std::pow(std::fabs(cy), 0.5f);   // turned edge-on it falls into shadow
       const int a = static_cast<int>(clamp01(p.alpha) * 255.f + 0.5f), v = static_cast<int>(clamp01(face) * 255.f + 0.5f);
       const ImU32 tint = IM_COL32(v, v, v, a);
       constexpr int N = 64;
-      {  // the thickness: a stack of copies of the outline behind the face, bright at the front edge, dark at the back
-        constexpr int L = 18; constexpr int NS = 12;
-        const float depth = 0.06f;
+
+      {  // the thickness: copies of the outline stacked behind the face, lit at the front edge and falling to black at the back
+        constexpr int L = 22; constexpr int NS = 12;
+        const float depth = 0.055f;
         dl->PushTextureID(white_ ? white_ : gold_);
         for (int k = L; k >= 1; --k) {
-          const float f = static_cast<float>(k) / L;   // 1 = deepest
-          const float zo = depth * f;
-          const float r0 = black_ ? 70.f : 205.f, g0 = black_ ? 70.f : 150.f, b0 = black_ ? 80.f : 45.f;   // the edge catching light
-          const float r1 = black_ ? 8.f : 52.f, g1 = black_ ? 8.f : 32.f, b1 = black_ ? 10.f : 7.f;         // the shadowed back
-          const float m = std::pow(f, 0.7f);
+          const float f = static_cast<float>(k) / L, m = std::pow(f, 0.55f);
+          const float r0 = black_ ? 62.f : 176.f, g0 = black_ ? 58.f : 140.f, b0 = black_ ? 54.f : 88.f;
+          const float r1 = black_ ? 5.f : 22.f, g1 = black_ ? 5.f : 17.f, b1 = black_ ? 6.f : 9.f;
           const ImU32 sideCol = IM_COL32(static_cast<int>((r0 + (r1 - r0) * m) * face), static_cast<int>((g0 + (g1 - g0) * m) * face), static_cast<int>((b0 + (b1 - b0) * m) * face), a);
+          const float zo = depth * f;
           for (int s = 0; s < NS; ++s) {
             const float u0 = static_cast<float>(s) / NS, u1 = static_cast<float>(s + 1) / NS;
             dl->PrimReserve(6, 4);
@@ -165,89 +132,73 @@ void Intro::paint(double t) const {
         }
         dl->PopTextureID();
       }
-      {  // the polished floor: the logo mirrored below it, fading out with distance
-        const float gap = 0.25f, top = 0.34f * clamp01(p.alpha);
+      {  // the polished floor: the logo mirrored beneath it, faint, gone within a short distance
+        const float gap = 0.22f, top = 0.20f * clamp01(p.alpha);
         auto colA = [&](float al) { return IM_COL32(v, v, v, static_cast<int>(clamp01(al) * 255.f)); };
         dl->PushTextureID(gold_);
         for (int s = 0; s < N; ++s) {
           const float u0 = static_cast<float>(s) / N, u1 = static_cast<float>(s + 1) / N;
-          const ImVec2 n0 = proj(u0 - 0.5f, 0.5f + gap), n1 = proj(u1 - 0.5f, 0.5f + gap), f1 = proj(u1 - 0.5f, 1.5f + gap), f0 = proj(u0 - 0.5f, 1.5f + gap);
-          // near edge shows the bottom of the picture (v = 1), far edge shows the top (v = 0)
           dl->PrimReserve(6, 4);
-          dl->PrimQuadUV(n0, n1, f1, f0, ImVec2(u0, 1), ImVec2(u1, 1), ImVec2(u1, 0), ImVec2(u0, 0), colA(top));
+          dl->PrimQuadUV(proj(u0 - 0.5f, 0.5f + gap), proj(u1 - 0.5f, 0.5f + gap), proj(u1 - 0.5f, 1.1f + gap), proj(u0 - 0.5f, 1.1f + gap),
+                         ImVec2(u0, 1), ImVec2(u1, 1), ImVec2(u1, 0.45f), ImVec2(u0, 0.45f), colA(top));
           ImDrawVert* vtx = dl->_VtxWritePtr - 4;
-          vtx[2].col = vtx[3].col = colA(0.f);   // fades to nothing at the far edge
+          vtx[2].col = vtx[3].col = colA(0.f);
         }
         dl->PopTextureID();
       }
-      float sweep = -1.f;
-      static const float sweeps[3][2] = {{1.6f, 0.9f}, {2.8f, 0.9f}, {3.95f, 0.8f}};
-      for (const auto& sw : sweeps) if (tf >= sw[0] && tf < sw[0] + sw[1]) sweep = -0.25f + 1.5f * (tf - sw[0]) / sw[1];
-      for (int s = 0; s < N; ++s) {
+      for (int s = 0; s < N; ++s) {   // the face
         const float u0 = static_cast<float>(s) / N, u1 = static_cast<float>(s + 1) / N;
-        const ImVec2 q0 = proj(u0 - 0.5f, -0.5f), q1 = proj(u1 - 0.5f, -0.5f), q2 = proj(u1 - 0.5f, 0.5f), q3 = proj(u0 - 0.5f, 0.5f);
-        dl->AddImageQuad(gold_, q0, q1, q2, q3, ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), tint);
+        dl->AddImageQuad(gold_, proj(u0 - 0.5f, -0.5f), proj(u1 - 0.5f, -0.5f), proj(u1 - 0.5f, 0.5f), proj(u0 - 0.5f, 0.5f), ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), tint);
       }
-      if (sweep > -0.9f && white_) {   // the glint: a soft band, shaded per vertex so it is one smooth gradient and not steps
-        auto band = [&](float uu) { const float dd = (uu - sweep) / 0.085f; return std::exp(-dd * dd) * (black_ ? 0.55f : 0.85f) * clamp01(p.alpha); };
+      // One slow band of light travelling across the face (twice while it grows, once as it lands), shaded per vertex so it is a smooth gradient.
+      static const float sweeps[3][2] = {{1.3f, 1.4f}, {2.5f, 1.3f}, {3.9f, 1.1f}};
+      float sweep = -1.f;
+      for (const auto& sw : sweeps) if (tf >= sw[0] && tf < sw[0] + sw[1]) sweep = -0.3f + 1.6f * smooth(0.f, 1.f, (tf - sw[0]) / sw[1]);
+      if (sweep > -0.9f && white_) {
+        auto band = [&](float uu) { const float dd = (uu - sweep) / 0.16f; return std::exp(-dd * dd) * (black_ ? 0.32f : 0.42f) * clamp01(p.alpha); };
         dl->PushTextureID(white_);
         for (int s = 0; s < N; ++s) {
           const float u0 = static_cast<float>(s) / N, u1 = static_cast<float>(s + 1) / N, g0 = band(u0), g1 = band(u1);
           if (g0 < 0.004f && g1 < 0.004f) continue;
           dl->PrimReserve(6, 4);
-          dl->PrimQuadUV(proj(u0 - 0.5f, -0.5f), proj(u1 - 0.5f, -0.5f), proj(u1 - 0.5f, 0.5f), proj(u0 - 0.5f, 0.5f),
-                         ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), IM_COL32(255, 245, 215, 255));
+          dl->PrimQuadUV(proj(u0 - 0.5f, -0.5f), proj(u1 - 0.5f, -0.5f), proj(u1 - 0.5f, 0.5f), proj(u0 - 0.5f, 0.5f), ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), IM_COL32(255, 244, 222, 255));
           ImDrawVert* vtx = dl->_VtxWritePtr - 4;
-          vtx[0].col = vtx[3].col = IM_COL32(255, 245, 215, static_cast<int>(g0 * 255.f));
-          vtx[1].col = vtx[2].col = IM_COL32(255, 245, 215, static_cast<int>(g1 * 255.f));
+          vtx[0].col = vtx[3].col = IM_COL32(255, 244, 222, static_cast<int>(g0 * 255.f));
+          vtx[1].col = vtx[2].col = IM_COL32(255, 244, 222, static_cast<int>(g1 * 255.f));
         }
         dl->PopTextureID();
       }
     }
-    {  // darken the edges of the frame so the light sits in a pool of black
-      const ImU32 dk = IM_COL32(0, 0, 0, 200), cl = IM_COL32(0, 0, 0, 0);
-      const float ex = size.x * 0.28f, ey = size.y * 0.30f;
+    {  // the edges of the frame fall to black
+      const ImU32 dk = IM_COL32(0, 0, 0, 215), cl = IM_COL32(0, 0, 0, 0);
+      const float ex = size.x * 0.30f, ey = size.y * 0.32f;
       dl->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(ex, size.y), dk, cl, cl, dk);
       dl->AddRectFilledMultiColor(ImVec2(size.x - ex, 0), ImVec2(size.x, size.y), cl, dk, dk, cl);
       dl->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(size.x, ey), dk, dk, cl, cl);
       dl->AddRectFilledMultiColor(ImVec2(0, size.y - ey), ImVec2(size.x, size.y), cl, cl, dk, dk);
     }
-    // sparkle flares on the polished edges while it holds
-    if (t >= kIntroGrowEnd + 0.1 && t < kIntroHoldEnd + 0.4 && gold_) {
-      static const float spots[5][2] = {{-0.33f, -0.30f}, {0.20f, 0.26f}, {0.44f, -0.14f}, {-0.12f, 0.06f}, {-0.46f, 0.12f}};
-      for (int k = 0; k < 5; ++k) {
-        const float ph = (tf - static_cast<float>(kIntroGrowEnd) - 0.1f - 0.17f * static_cast<float>(k)) / 0.55f;
-        if (ph <= 0.f || ph >= 1.f) continue;
-        const float a = std::sin(ph * kPi), L = W0 * (0.015f + 0.060f * a);
-        const ImVec2 q(c.x + spots[k][0] * W0, c.y + spots[k][1] * H0);
-        dl->AddLine(ImVec2(q.x - L, q.y), ImVec2(q.x + L, q.y), IM_COL32(255, 244, 214, static_cast<int>(a * 235.f)), 1.5f);
-        dl->AddLine(ImVec2(q.x, q.y - L * 1.5f), ImVec2(q.x, q.y + L * 1.5f), IM_COL32(255, 244, 214, static_cast<int>(a * 235.f)), 1.5f);
-        dl->AddLine(ImVec2(q.x - L * 0.45f, q.y - L * 0.45f), ImVec2(q.x + L * 0.45f, q.y + L * 0.45f), IM_COL32(255, 230, 170, static_cast<int>(a * 140.f)), 1.f);
-        dl->AddLine(ImVec2(q.x - L * 0.45f, q.y + L * 0.45f), ImVec2(q.x + L * 0.45f, q.y - L * 0.45f), IM_COL32(255, 230, 170, static_cast<int>(a * 140.f)), 1.f);
-        dl->AddCircleFilled(q, 2.5f + 3.f * a, IM_COL32(255, 250, 235, static_cast<int>(a * 255.f)), 12);
-      }
-    }
-    // the name, letter-spaced, while it holds
-    const float ta = smooth(3.95f, 4.4f, tf) * (1.f - smooth(4.5f, 4.85f, tf));
+    // The name: small, pale, widely spaced, fading in under the logo as it lands and out as it leaves.
+    const float ta = smooth(4.05f, 4.6f, tf) * (1.f - smooth(4.55f, 4.85f, tf));
     if (ta > 0.01f) {
       ImFont* font = ImGui::GetFont();
-      const float fs = ImGui::GetFontSize() * 1.7f, sp = fs * 0.36f;
-      const char* name = "WEZT RECORDING TOOLS";
+      const float fs = ImGui::GetFontSize() * 1.15f, sp = fs * 0.62f;
+      const char* name = "WEZT  RECORDING  TOOLS";
       float w = 0; for (const char* q = name; *q; ++q) w += font->CalcTextSizeA(fs, 1e9f, 0.f, q, q + 1).x + sp;
       w -= sp;
-      float x = c.x - w * 0.5f; const float y = c.y + H0 * 0.5f * 1.08f + fs * 0.9f;
-      for (const char* q = name; *q; ++q) { dl->AddText(font, fs, ImVec2(x, y), gold(ta * 0.95f, 1.05f), q, q + 1); x += font->CalcTextSizeA(fs, 1e9f, 0.f, q, q + 1).x + sp; }
+      float x = c.x - w * 0.5f; const float y = c.y + H0 * 0.5f + fs * 2.2f;
+      for (const char* q = name; *q; ++q) { dl->AddText(font, fs, ImVec2(x, y), col(226, 208, 170, ta * 0.9f), q, q + 1); x += font->CalcTextSizeA(fs, 1e9f, 0.f, q, q + 1).x + sp; }
+      const float lw = w * 0.5f * smooth(4.05f, 4.75f, tf);   // a hairline that draws out from the centre under the name
+      dl->AddRectFilledMultiColor(ImVec2(c.x - lw, y + fs * 2.0f), ImVec2(c.x, y + fs * 2.0f + 1.f), col(226, 208, 170, 0.f), col(226, 208, 170, ta * 0.6f), col(226, 208, 170, ta * 0.6f), col(226, 208, 170, 0.f));
+      dl->AddRectFilledMultiColor(ImVec2(c.x, y + fs * 2.0f), ImVec2(c.x + lw, y + fs * 2.0f + 1.f), col(226, 208, 170, ta * 0.6f), col(226, 208, 170, 0.f), col(226, 208, 170, 0.f), col(226, 208, 170, ta * 0.6f));
     }
     if (tf > 0.4f && tf < 5.6f) {
       const char* hint = "Click or press any key to skip";
       const ImVec2 ts = ImGui::CalcTextSize(hint);
-      dl->AddText(ImVec2(c.x - ts.x * 0.5f, size.y - ts.y - 18.f), IM_COL32(200, 200, 200, static_cast<int>(70.f * smooth(0.4f, 1.2f, tf))), hint);
+      dl->AddText(ImVec2(c.x - ts.x * 0.5f, size.y - ts.y - 18.f), IM_COL32(190, 190, 190, static_cast<int>(55.f * smooth(0.4f, 1.2f, tf))), hint);
     }
-  } else {   // the main window is open underneath: a gold-white flash that fades, with a bloom out of the speck
+  } else {   // the studio is open underneath: a warm white wash that clears quickly
     const float f = clamp01((tf - static_cast<float>(kIntroOpen)) / static_cast<float>(kIntroEnd - kIntroOpen));
-    auto warm = [](float a) { return IM_COL32(255, 240, 205, static_cast<int>(clamp01(a) * 255.f + 0.5f)); };
-    dl->AddRectFilled(ImVec2(0, 0), size, warm(0.95f * std::pow(1.f - f, 2.2f)));
-    dl->AddCircleFilled(c, size.x * 0.6f * std::pow(f, 0.5f), warm(0.5f * (1.f - f)), 96);
+    dl->AddRectFilled(ImVec2(0, 0), size, col(255, 240, 215, 0.9f * std::pow(1.f - f, 2.6f)));
   }
 }
 

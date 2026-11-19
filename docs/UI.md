@@ -122,9 +122,12 @@ are all undo steps. One recording pass is one step (they share a merge key), so 
 
 ## Start-up intro and Settings
 
-When Wezt starts it plays a short opening: the logo (the project owner's logo, a solid slab with real thickness (side walls that show as it spins and sways), by default polished black with a fine gold rim, or heavy polished gold, chosen in Settings: thickened strokes, rounded bevel, studio reflections, a fine outline, soft drop shadow, a mirror-polished floor reflection) on a black stage with slow light rays, drifting bokeh and a vignette grows from a speck while it
-spins in 3D, lands with a shock ring and a glint, holds for a moment with the name under it, then spins back down to a speck;
-that is when the studio window opens, on a flash. The sound is synthesized in code (a rising drone and noise sweep, a sub boom on
+When Wezt starts it plays a short opening. A black room; the logo (the project owner's logo, a solid slab with real thickness)
+grows from a speck while it spins in 3D, lands with a single hairline of light across the frame, sways slightly so the side walls
+show, holds with the name in small widely spaced type under it, then spins back down to a speck; that is when the studio opens, on
+a soft white wash. The look is deliberately restrained: machined metal (a flat face with a narrow lit chamfer along each edge,
+no puffy bevel), by default satin black with a fine gold inlay along every edge, or champagne gold; a slow band of light travels
+across the face, and a faint polished floor reflects it. The sound is synthesized in code (a rising drone and noise sweep, a sub boom on
 the landing, a falling whoosh, and four quick strikes of inharmonic "steel" partials with a scrape for the metal clash); it uses
 no recordings. Click or press any key to skip it.
 
