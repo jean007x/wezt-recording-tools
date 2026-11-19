@@ -51,8 +51,17 @@ void rasterize(const ImDrawData* dd, const unsigned char* fontTex, int fontW, in
             const float c = 1.f - a - b;
             if (a < -1e-4f || b < -1e-4f || c < -1e-4f) continue;
             const float u = a * v[0]->uv.x + b * v[1]->uv.x + c * v[2]->uv.x, vv = a * v[0]->uv.y + b * v[1]->uv.y + c * v[2]->uv.y;
-            const int tx = std::clamp(static_cast<int>(u * static_cast<float>(tw)), 0, tw - 1), ty = std::clamp(static_cast<int>(vv * static_cast<float>(th)), 0, th - 1);
-            const unsigned char* t = tex + 4 * (ty * tw + tx);
+            float t[4];
+            if (tex == fontTex) {
+              const int tx = std::clamp(static_cast<int>(u * static_cast<float>(tw)), 0, tw - 1), ty = std::clamp(static_cast<int>(vv * static_cast<float>(th)), 0, th - 1);
+              for (int k = 0; k < 4; ++k) t[k] = tex[4 * (ty * tw + tx) + k];
+            } else {   // the logo pictures: bilinear, like the GPU does
+              const float fx = std::clamp(u * static_cast<float>(tw) - 0.5f, 0.f, static_cast<float>(tw - 1)), fy = std::clamp(vv * static_cast<float>(th) - 0.5f, 0.f, static_cast<float>(th - 1));
+              const int x0t = static_cast<int>(fx), y0t = static_cast<int>(fy), x1t = std::min(x0t + 1, tw - 1), y1t = std::min(y0t + 1, th - 1);
+              const float ax = fx - static_cast<float>(x0t), ay = fy - static_cast<float>(y0t);
+              for (int k = 0; k < 4; ++k)
+                t[k] = (tex[4 * (y0t * tw + x0t) + k] * (1 - ax) + tex[4 * (y0t * tw + x1t) + k] * ax) * (1 - ay) + (tex[4 * (y1t * tw + x0t) + k] * (1 - ax) + tex[4 * (y1t * tw + x1t) + k] * ax) * ay;
+            }
             float col[4];
             for (int k = 0; k < 4; ++k) {
               const auto sh = static_cast<unsigned>(8 * k);

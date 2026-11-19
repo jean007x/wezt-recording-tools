@@ -126,7 +126,7 @@ static void testSound() {
 
 static void testLogo() {
   const ui::LogoImage g = ui::makeLogo(ui::LogoStyle::Gold), w = ui::makeWhiteLogo();
-  CHECK(g.w == 680 && g.h == 256 && w.w == g.w && w.h == g.h);
+  CHECK(g.w == 1088 && g.h > 380 && g.h < 440 && w.w == g.w && w.h == g.h);
   CHECK(g.rgba.size() == static_cast<std::size_t>(g.w * g.h) * 4);
   double cover = 0, r = 0, gr = 0, bl = 0; std::size_t solid = 0;
   for (std::size_t i = 0; i < static_cast<std::size_t>(g.w * g.h); ++i) {
@@ -149,7 +149,7 @@ static void testLogo() {
     CHECK(n > 1000 && lumB < lumG * 0.45);
   }
   const auto m = ui::mipChain(g);
-  CHECK(m.size() == 10 && m.front().w == 680 && m.back().w == 1 && m.back().h == 1);
+  CHECK(m.size() == 11 && m.front().w == 1088 && m.back().w == 1 && m.back().h == 1);
   bool ok = true;
   for (std::size_t i = 1; i < m.size(); ++i) ok = ok && m[i].w >= 1 && m[i].rgba.size() == static_cast<std::size_t>(m[i].w * m[i].h) * 4;
   CHECK(ok);

@@ -8,22 +8,23 @@
 namespace wezt::ui {
 namespace {
 
-std::vector<float> blur(const std::vector<float>& src, int w, int h, int radius) {   // three box passes ~ a gaussian
+std::vector<float> blur(const std::vector<float>& src, int w, int h, int radius) {   // three box passes ~ a gaussian; sliding sums, so cost does not grow with the radius
   std::vector<float> a = src, b(src.size());
-  for (int pass = 0; pass < 3; ++pass) {
-    for (int y = 0; y < h; ++y)        // horizontal
-      for (int x = 0; x < w; ++x) {
-        float s = 0; int n = 0;
-        for (int k = -radius; k <= radius; ++k) { const int xx = x + k; if (xx >= 0 && xx < w) { s += a[static_cast<std::size_t>(y * w + xx)]; ++n; } }
-        b[static_cast<std::size_t>(y * w + x)] = s / static_cast<float>(n);
+  auto pass = [&](const std::vector<float>& in, std::vector<float>& out, bool horiz) {
+    const int len = horiz ? w : h, lines = horiz ? h : w;
+    for (int l = 0; l < lines; ++l) {
+      auto at = [&](int i) { return horiz ? in[static_cast<std::size_t>(l * w + i)] : in[static_cast<std::size_t>(i * w + l)]; };
+      float sum = 0; int n = 0;
+      for (int i = 0; i <= std::min(radius, len - 1); ++i) { sum += at(i); ++n; }
+      for (int i = 0; i < len; ++i) {
+        (horiz ? out[static_cast<std::size_t>(l * w + i)] : out[static_cast<std::size_t>(i * w + l)]) = sum / static_cast<float>(n);
+        const int add = i + radius + 1, rem = i - radius;
+        if (add < len) { sum += at(add); ++n; }
+        if (rem >= 0) { sum -= at(rem); --n; }
       }
-    for (int y = 0; y < h; ++y)        // vertical
-      for (int x = 0; x < w; ++x) {
-        float s = 0; int n = 0;
-        for (int k = -radius; k <= radius; ++k) { const int yy = y + k; if (yy >= 0 && yy < h) { s += b[static_cast<std::size_t>(yy * w + x)]; ++n; } }
-        a[static_cast<std::size_t>(y * w + x)] = s / static_cast<float>(n);
-      }
-  }
+    }
+  };
+  for (int k = 0; k < 3; ++k) { pass(a, b, true); pass(b, a, false); }
   return a;
 }
 
@@ -51,8 +52,8 @@ float studio(float up) {
   return lerp(v, 0.10f, dark * 0.85f);
 }
 
-// 20 px of room on every side of the 640x216 shape for the soft shadow to fall into.
-constexpr int kPad = 20;
+// 32 px of room on every side of the mask for the soft shadow to fall into.
+constexpr int kPad = 32;
 
 std::vector<float> paddedCoverage(int& W, int& H) {
   W = kLogoMaskW + 2 * kPad; H = kLogoMaskH + 2 * kPad;
@@ -62,11 +63,11 @@ std::vector<float> paddedCoverage(int& W, int& H) {
   return c;
 }
 
-// Strokes made a little heavier (about two pixels each side) so the mark reads solid and substantial rather than wiry.
+// Strokes made a little heavier (about three pixels each side) so the mark reads solid and substantial rather than wiry.
 std::vector<float> thickened(const std::vector<float>& cov, int W, int H) {
-  const std::vector<float> b = blur(cov, W, H, 2);   // radius 2, a lower threshold: strokes grow about two pixels each side
+  const std::vector<float> b = blur(cov, W, H, 3);   // strokes grow about three pixels each side (the mask is 1024 px wide)
   std::vector<float> o(cov.size());
-  for (std::size_t i = 0; i < cov.size(); ++i) o[i] = std::max(cov[i], sstep(0.05f, 0.34f, b[i]));
+  for (std::size_t i = 0; i < cov.size(); ++i) o[i] = std::max(cov[i], sstep(0.05f, 0.36f, b[i]));
   return o;
 }
 
@@ -88,12 +89,12 @@ LogoImage makeLogo(LogoStyle style) {
   int W = 0, H = 0;
   const std::vector<float> base = paddedCoverage(W, H);
   const std::vector<float> cov = thickened(base, W, H);
-  const std::vector<float> soft = blur(cov, W, H, 2), wide = blur(cov, W, H, 5), broad = blur(cov, W, H, 9);
+  const std::vector<float> soft = blur(cov, W, H, 3), wide = blur(cov, W, H, 8), broad = blur(cov, W, H, 14);
   // The soft drop shadow: the shape moved down and to the right, blurred hard.
   std::vector<float> moved(cov.size(), 0.f);
   for (int y = 0; y < H; ++y)
-    for (int x = 0; x < W; ++x) { const int sx = x - 5, sy = y - 8; if (sx >= 0 && sy >= 0) moved[static_cast<std::size_t>(y * W + x)] = cov[static_cast<std::size_t>(sy * W + sx)]; }
-  const std::vector<float> shadow = blur(moved, W, H, 4);
+    for (int x = 0; x < W; ++x) { const int sx = x - 8, sy = y - 13; if (sx >= 0 && sy >= 0) moved[static_cast<std::size_t>(y * W + x)] = cov[static_cast<std::size_t>(sy * W + sx)]; }
+  const std::vector<float> shadow = blur(moved, W, H, 6);
   auto Ht = [&](int x, int y) {   // a rounded, tube-like height for every stroke
     x = std::clamp(x, 0, W - 1); y = std::clamp(y, 0, H - 1);
     const std::size_t i = static_cast<std::size_t>(y * W + x);
@@ -104,7 +105,7 @@ LogoImage makeLogo(LogoStyle style) {
   for (int y = 0; y < H; ++y)
     for (int x = 0; x < W; ++x) {
       const std::size_t idx = static_cast<std::size_t>(y * W + x);
-      const float dx = (Ht(x + 1, y) - Ht(x - 1, y)) * 3.4f, dy = (Ht(x, y + 1) - Ht(x, y - 1)) * 3.4f;
+      const float dx = (Ht(x + 1, y) - Ht(x - 1, y)) * 5.4f, dy = (Ht(x, y + 1) - Ht(x, y - 1)) * 5.4f;
       const float nl = std::sqrt(dx * dx + dy * dy + 1.f);
       const float nx = -dx / nl, ny = -dy / nl, nz = 1.f / nl;
       const float diff = std::clamp((nx * lx + ny * ly + nz * lz) / ll, 0.f, 1.f);
@@ -112,7 +113,7 @@ LogoImage makeLogo(LogoStyle style) {
       const float env = studio(-ny);                                        // ny is "down" on screen: -ny is up
       const float yn = static_cast<float>(y - kPad) / static_cast<float>(kLogoMaskH);
       const float sweep = 0.5f + 0.5f * std::cos(yn * 6.2832f * 1.0f + 0.5f);   // a broad gradient over the whole mark
-      const float grain = (hash2(0, y) - 0.5f) * 0.045f + (hash2(x / 18, y / 2) - 0.5f) * 0.03f;   // faint brushed streaks
+      const float grain = (hash2(0, y) - 0.5f) * 0.045f + (hash2(x / 29, y / 3) - 0.5f) * 0.03f;   // faint brushed streaks
       const float c = cov[idx];
       const float edge = 4.f * c * (1.f - c);                               // 1 on the anti-aliased rim, 0 inside and outside
       float t = 0.20f + 0.50f * env + 0.20f * diff + 0.10f * sweep + 0.46f * spec + grain;

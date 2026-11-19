@@ -144,7 +144,7 @@ void Intro::paint(double t) const {
       const float face = 0.5f + 0.5f * std::pow(std::fabs(cy), 0.6f);   // turned edge-on it goes dark, like metal away from the light
       const int a = static_cast<int>(clamp01(p.alpha) * 255.f + 0.5f), v = static_cast<int>(clamp01(face) * 255.f + 0.5f);
       const ImU32 tint = IM_COL32(v, v, v, a);
-      constexpr int N = 48;
+      constexpr int N = 64;
       {  // the thickness: a stack of copies of the outline behind the face, bright at the front edge, dark at the back
         constexpr int L = 18; constexpr int NS = 12;
         const float depth = 0.06f;
@@ -187,11 +187,21 @@ void Intro::paint(double t) const {
         const float u0 = static_cast<float>(s) / N, u1 = static_cast<float>(s + 1) / N;
         const ImVec2 q0 = proj(u0 - 0.5f, -0.5f), q1 = proj(u1 - 0.5f, -0.5f), q2 = proj(u1 - 0.5f, 0.5f), q3 = proj(u0 - 0.5f, 0.5f);
         dl->AddImageQuad(gold_, q0, q1, q2, q3, ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), tint);
-        if (sweep > -0.9f && white_) {
-          const float dd = ((u0 + u1) * 0.5f - sweep) / 0.07f;
-          const float g = std::exp(-dd * dd) * 0.85f * clamp01(p.alpha);
-          if (g > 0.01f) dl->AddImageQuad(white_, q0, q1, q2, q3, ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), IM_COL32(255, 245, 215, static_cast<int>(g * 255.f)));
+      }
+      if (sweep > -0.9f && white_) {   // the glint: a soft band, shaded per vertex so it is one smooth gradient and not steps
+        auto band = [&](float uu) { const float dd = (uu - sweep) / 0.085f; return std::exp(-dd * dd) * (black_ ? 0.55f : 0.85f) * clamp01(p.alpha); };
+        dl->PushTextureID(white_);
+        for (int s = 0; s < N; ++s) {
+          const float u0 = static_cast<float>(s) / N, u1 = static_cast<float>(s + 1) / N, g0 = band(u0), g1 = band(u1);
+          if (g0 < 0.004f && g1 < 0.004f) continue;
+          dl->PrimReserve(6, 4);
+          dl->PrimQuadUV(proj(u0 - 0.5f, -0.5f), proj(u1 - 0.5f, -0.5f), proj(u1 - 0.5f, 0.5f), proj(u0 - 0.5f, 0.5f),
+                         ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), IM_COL32(255, 245, 215, 255));
+          ImDrawVert* vtx = dl->_VtxWritePtr - 4;
+          vtx[0].col = vtx[3].col = IM_COL32(255, 245, 215, static_cast<int>(g0 * 255.f));
+          vtx[1].col = vtx[2].col = IM_COL32(255, 245, 215, static_cast<int>(g1 * 255.f));
         }
+        dl->PopTextureID();
       }
     }
     {  // darken the edges of the frame so the light sits in a pool of black
