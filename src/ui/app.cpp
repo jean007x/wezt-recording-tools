@@ -102,6 +102,16 @@ void App::watchAudioDevice() {
   }
 }
 
+// A plug-in that keeps producing garbage (NaN/inf) is muted by the engine so the speakers are safe. Say which one, once,
+// and re-enable it automatically only if the user acts (a plug-in is re-enabled from its parameter window).
+void App::watchPluginFaults() {
+  std::size_t n = 0; std::string names;
+  for (const auto& f : session_->pluginFaults())
+    if (f.quarantined) { ++n; names += (names.empty() ? "" : ", ") + f.name; }
+  if (n > quarantineShown_) setStatus("Muted a plug-in that produced invalid audio: " + names + ". Remove it or re-enable it from its window.");
+  quarantineShown_ = n;
+}
+
 void App::stopAudio() {
   if (device_ && deviceRunning_) device_->stop();
   deviceRunning_ = false;
@@ -463,6 +473,7 @@ void App::updateMeters() {
 
 void App::frame() {
   watchAudioDevice();
+  watchPluginFaults();
   updateMeters();
   syncLiveMidi();
   for (session::TrackId id : session_->trackIds()) if (instruments::Sampler* sm = samplerOn(id)) sm->setTempo(static_cast<double>(tempo_));

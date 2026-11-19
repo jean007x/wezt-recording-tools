@@ -369,6 +369,26 @@ bool Session::pollPluginLatency() {
   return latencyDirty_;
 }
 
+std::vector<Session::PluginFault> Session::pluginFaults() const {
+  std::vector<PluginFault> out;
+  for (std::size_t ti = 0; ti < tracks_.size(); ++ti) {
+    if (!tracks_[ti]) continue;
+    const auto& ins = tracks_[ti]->inserts;
+    for (std::size_t i = 0; i < ins.size(); ++i) {
+      const auto bad = graph_.nonFiniteBlocks(ins[i].node);
+      if (bad) out.push_back({static_cast<TrackId>(ti), i, ins[i].descriptor.name, graph_.quarantined(ins[i].node), bad});
+    }
+  }
+  return out;
+}
+
+bool Session::reenablePlugin(TrackId id, std::size_t insert) {
+  Track* t = track(id);
+  if (!t || insert >= t->inserts.size()) return false;
+  graph_.resetFault(t->inserts[insert].node);
+  return true;
+}
+
 bool Session::applyPluginLatency() {
   if (!pollPluginLatency()) return false;
   latencyDirty_ = false;

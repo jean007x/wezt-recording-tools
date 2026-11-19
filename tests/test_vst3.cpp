@@ -26,6 +26,15 @@ int main(int argc, char** argv) {
     return 0;
   }
   std::string err;
+  {  // a missing file, and a file that is not a plug-in: a clear error, never a crash
+    CHECK(!Vst3Instance::load("/definitely/not/here.vst3", &err));
+    CHECK(!err.empty());
+    err.clear();
+    const char* notPlugin = argv[0];  // this test's own executable: a real file, certainly not a VST3 module
+    CHECK(!Vst3Instance::load(notPlugin, &err));
+    CHECK(!err.empty());
+    err.clear();
+  }
   auto classes = describeVst3(argv[1], &err);
   CHECK(!classes.empty());
   if (!classes.empty()) std::printf("class: %s by %s\n", classes[0].name.c_str(), classes[0].vendor.c_str());
@@ -110,6 +119,16 @@ int main(int argc, char** argv) {
   auto state = plug->saveState();
   CHECK(!state.empty());
   CHECK(plug->loadState(state));
+  CHECK(!plug->loadState({}));                                         // empty: refused
+  {  // damaged state: the plug-in may accept or refuse it, the host must survive and keep processing
+    std::vector<std::uint8_t> junk(state.size() / 2 + 3, 0xA5);
+    (void)plug->loadState(junk);
+    std::vector<std::uint8_t> cut(state.begin(), state.begin() + static_cast<std::ptrdiff_t>(state.size() / 2));
+    (void)plug->loadState(cut);
+    g.render(out);
+    for (float v : out.data) CHECK(std::isfinite(v));
+    CHECK(plug->loadState(state));                                     // and a good state still loads afterwards
+  }
 
   std::printf(failures ? "FAILED\n" : "vst3 tests passed\n");
   return failures;

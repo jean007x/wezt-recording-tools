@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <sstream>
 
@@ -652,7 +653,42 @@ static void testDuplicateTrack() {
   CHECK(firstNonZero(o.l) >= 0 || firstNonZero(o.r) >= 0);
 }
 
+// A plug-in that writes NaN is muted by the engine, and the session reports it so the UI can say which one.
+class NanPlugin : public plugins::IPluginInstance {
+ public:
+  void prepare(double, std::size_t) override {}
+  void process(const AudioBuffer& in, AudioBuffer& out) override {
+    for (std::size_t c = 0; c < out.channels; ++c)
+      for (std::size_t i = 0; i < out.frames; ++i) out.channel(c)[i] = bad ? std::numeric_limits<float>::quiet_NaN() : in.channel(c)[i];
+  }
+  std::size_t parameterCount() const override { return 0; }
+  std::vector<std::uint8_t> saveState() const override { return {}; }
+  bool loadState(const std::vector<std::uint8_t>&) override { return false; }
+  bool bad = true;
+};
+
+static void testPluginFaultReport() {
+  Session s(48000, 2, 128);
+  const auto t = s.addTrack("T", true);
+  s.addClip(t, clipOf(impulses(20000, {{0, 1.f}}), 0));
+  auto np = std::make_unique<NanPlugin>(); NanPlugin* raw = np.get();
+  auto d = fakeDesc(); d.name = "Flaky";
+  CHECK(s.addInsert(t, std::move(np), d));
+  CHECK(s.pluginFaults().empty());
+  Rig r(s);
+  r.e->transport().play();
+  const Out o = r.run(std::vector<unsigned>(8, 128));
+  for (float v : o.l) CHECK(std::isfinite(v));            // the speakers never see it
+  auto f = s.pluginFaults();
+  CHECK(f.size() == 1 && f[0].name == "Flaky" && f[0].quarantined && f[0].insert == 0 && f[0].badBlocks >= 4);
+  raw->bad = false;
+  CHECK(s.reenablePlugin(t, 0));
+  CHECK(!s.pluginFaults().empty() && !s.pluginFaults()[0].quarantined);
+  CHECK(!s.reenablePlugin(t, 5));
+}
+
 int main() {
+  testPluginFaultReport();
   testPlaybackAndPan();
   testMuteSolo();
   testSends();

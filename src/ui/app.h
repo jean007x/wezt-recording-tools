@@ -237,6 +237,8 @@ class App {
   std::unique_ptr<audio::NullDevice> nullDevice_;
   Keymap keymap_;
   std::string status_ = "Ready";
+  std::size_t quarantineShown_ = 0;   // how many muted plug-ins the user has already been told about
+  void watchPluginFaults();
   bool quit_ = false, deviceRunning_ = false, deviceLost_ = false;
   double deviceRetryAt_ = 0.0;
 

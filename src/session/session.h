@@ -135,6 +135,11 @@ class Session {
   // call it only while the audio is stopped (the compensation delays are re-sized). Returns true when it changed something.
   bool pollPluginLatency();
   bool applyPluginLatency();
+  // A plug-in that keeps producing NaN/inf is muted by the graph (see Graph::quarantined). These let the UI say so and let the
+  // user switch it back on (e.g. after changing the offending setting). Control thread.
+  struct PluginFault { TrackId track; std::size_t insert; std::string name; bool quarantined; std::uint64_t badBlocks; };
+  std::vector<PluginFault> pluginFaults() const;      // inserts that produced bad samples at least once
+  bool reenablePlugin(TrackId t, std::size_t insert); // clears the quarantine
   bool addInsert(TrackId t, std::unique_ptr<plugins::IPluginInstance> plugin, const plugins::PluginDescriptor& d, int position = -1);
   bool removeInsert(TrackId t, std::size_t index);
   // Plugin parameter automation. Points are (frame, normalized value 0..1). Replaces the lane; no points removes it.
