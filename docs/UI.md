@@ -122,7 +122,7 @@ are all undo steps. One recording pass is one step (they share a merge key), so 
 
 ## Start-up intro and Settings
 
-When Wezt starts it plays a short opening: the logo (the project owner's logo, shaded as gold metal) grows from a speck while it
+When Wezt starts it plays a short opening: the logo (the project owner's logo, rendered as heavy polished gold: thickened strokes, rounded bevel, studio reflections, a fine outline, soft drop shadow) grows from a speck while it
 spins in 3D, lands with a shock ring and a glint, holds for a moment with the name under it, then spins back down to a speck;
 that is when the studio window opens, on a flash. The sound is synthesized in code (a rising drone and noise sweep, a sub boom on
 the landing, a falling whoosh, and four quick strikes of inharmonic "steel" partials with a scrape for the metal clash); it uses

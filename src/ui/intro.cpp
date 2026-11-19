@@ -69,7 +69,7 @@ void Intro::paint(double t) const {
   const ImVec2 size = ImGui::GetIO().DisplaySize;
   const ImVec2 c(size.x * 0.5f, size.y * 0.5f);
   const float tf = static_cast<float>(t);
-  const float W0 = std::min(size.x * 0.68f, size.y * 0.62f * aspect_), H0 = W0 / aspect_;
+  const float W0 = std::min(size.x * 0.73f, size.y * 0.68f * aspect_), H0 = W0 / aspect_;
   const float d = 1.6f * W0;
 
   if (t < kIntroOpen) {
@@ -81,7 +81,7 @@ void Intro::paint(double t) const {
     const float glow = std::pow(p.scale, 0.8f) * (t < kIntroGrowEnd ? 0.5f + 0.5f * u : 1.f) * p.alpha;
     for (int k = 0; k < 64; ++k) {   // many faint steps so the glow shades smoothly instead of showing rings
       const float r = (0.10f + 1.0f * static_cast<float>(k) / 63.f) * W0 * std::max(0.05f, p.scale);
-      dl->AddCircleFilled(c, r, gold(0.0085f * glow), 72);
+      dl->AddCircleFilled(c, r, IM_COL32(235, 125, 30, static_cast<int>(clamp01(0.0075f * glow) * 255.f + 0.5f)), 72);
     }
     // dust drifting outward while it approaches
     if (t < kIntroGrowEnd)
@@ -133,6 +133,21 @@ void Intro::paint(double t) const {
           const float g = std::exp(-dd * dd) * 0.85f * clamp01(p.alpha);
           if (g > 0.01f) dl->AddImageQuad(white_, q0, q1, q2, q3, ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), IM_COL32(255, 245, 215, static_cast<int>(g * 255.f)));
         }
+      }
+    }
+    // sparkle flares on the polished edges while it holds
+    if (t >= kIntroGrowEnd + 0.1 && t < kIntroHoldEnd + 0.4 && gold_) {
+      static const float spots[5][2] = {{-0.33f, -0.30f}, {0.20f, 0.26f}, {0.44f, -0.14f}, {-0.12f, 0.06f}, {-0.46f, 0.12f}};
+      for (int k = 0; k < 5; ++k) {
+        const float ph = (tf - static_cast<float>(kIntroGrowEnd) - 0.1f - 0.17f * static_cast<float>(k)) / 0.55f;
+        if (ph <= 0.f || ph >= 1.f) continue;
+        const float a = std::sin(ph * kPi), L = W0 * (0.015f + 0.060f * a);
+        const ImVec2 q(c.x + spots[k][0] * W0, c.y + spots[k][1] * H0);
+        dl->AddLine(ImVec2(q.x - L, q.y), ImVec2(q.x + L, q.y), IM_COL32(255, 244, 214, static_cast<int>(a * 235.f)), 1.5f);
+        dl->AddLine(ImVec2(q.x, q.y - L * 1.5f), ImVec2(q.x, q.y + L * 1.5f), IM_COL32(255, 244, 214, static_cast<int>(a * 235.f)), 1.5f);
+        dl->AddLine(ImVec2(q.x - L * 0.45f, q.y - L * 0.45f), ImVec2(q.x + L * 0.45f, q.y + L * 0.45f), IM_COL32(255, 230, 170, static_cast<int>(a * 140.f)), 1.f);
+        dl->AddLine(ImVec2(q.x - L * 0.45f, q.y + L * 0.45f), ImVec2(q.x + L * 0.45f, q.y - L * 0.45f), IM_COL32(255, 230, 170, static_cast<int>(a * 140.f)), 1.f);
+        dl->AddCircleFilled(q, 2.5f + 3.f * a, IM_COL32(255, 250, 235, static_cast<int>(a * 255.f)), 12);
       }
     }
     // the name, letter-spaced, while it holds

@@ -126,12 +126,12 @@ static void testSound() {
 
 static void testLogo() {
   const ui::LogoImage g = ui::makeGoldLogo(), w = ui::makeWhiteLogo();
-  CHECK(g.w == 640 && g.h == 216 && w.w == g.w && w.h == g.h);
+  CHECK(g.w == 680 && g.h == 256 && w.w == g.w && w.h == g.h);
   CHECK(g.rgba.size() == static_cast<std::size_t>(g.w * g.h) * 4);
   double cover = 0, r = 0, gr = 0, bl = 0; std::size_t solid = 0;
   for (std::size_t i = 0; i < static_cast<std::size_t>(g.w * g.h); ++i) {
     cover += g.rgba[i * 4 + 3] / 255.0;
-    CHECK(g.rgba[i * 4 + 3] == w.rgba[i * 4 + 3]);                    // same shape in both pictures
+    CHECK(w.rgba[i * 4 + 3] <= g.rgba[i * 4 + 3]);                    // the white glint picture is the shape only (the gold one adds the soft shadow)
     if (g.rgba[i * 4 + 3] > 250) { ++solid; r += g.rgba[i * 4]; gr += g.rgba[i * 4 + 1]; bl += g.rgba[i * 4 + 2]; }
   }
   cover /= g.w * g.h;
@@ -141,7 +141,7 @@ static void testLogo() {
   CHECK(r > gr && gr > bl && r > 150 && bl < 140);                    // it is gold: red > green > blue, and bright enough
   CHECK(g.rgba[3] == 0);                                              // the corner is empty
   const auto m = ui::mipChain(g);
-  CHECK(m.size() == 10 && m.front().w == 640 && m.back().w == 1 && m.back().h == 1);
+  CHECK(m.size() == 10 && m.front().w == 680 && m.back().w == 1 && m.back().h == 1);
   bool ok = true;
   for (std::size_t i = 1; i < m.size(); ++i) ok = ok && m[i].w >= 1 && m[i].rgba.size() == static_cast<std::size_t>(m[i].w * m[i].h) * 4;
   CHECK(ok);
