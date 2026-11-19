@@ -81,7 +81,7 @@ LogoImage makeLogo(LogoStyle style) {
   // Machined metal, not a puffy emboss: the face of every stroke is flat and clean; only a narrow chamfer (a few pixels) along each edge
   // catches the light. Edges facing the light are bright, edges facing away are dark, and that crisp contrast is what reads as
   // precision-made and expensive.
-  const std::vector<float> soft = blur(cov, W, H, 2), face = blur(cov, W, H, 10);
+  const std::vector<float> soft = blur(cov, W, H, 1), face = blur(cov, W, H, 10);   // radius 1: a narrow chamfer, so the lit rim is a fine line
   std::vector<float> moved(cov.size(), 0.f);
   for (int y = 0; y < H; ++y)
     for (int x = 0; x < W; ++x) { const int sx = x - 6, sy = y - 10; if (sx >= 0 && sy >= 0) moved[static_cast<std::size_t>(y * W + x)] = cov[static_cast<std::size_t>(sy * W + sx)]; }
@@ -93,8 +93,8 @@ LogoImage makeLogo(LogoStyle style) {
     for (int x = 0; x < W; ++x) {
       const std::size_t idx = static_cast<std::size_t>(y * W + x);
       const float c = cov[idx];
-      const float dx = (Ht(x + 1, y) - Ht(x - 1, y)) * 9.f, dy = (Ht(x, y + 1) - Ht(x, y - 1)) * 9.f;
-      const float slope = std::clamp(std::sqrt(dx * dx + dy * dy) * 0.55f, 0.f, 1.f);       // 0 on the flat face, 1 on the chamfer
+      const float dx = (Ht(x + 1, y) - Ht(x - 1, y)) * 15.f, dy = (Ht(x, y + 1) - Ht(x, y - 1)) * 15.f;
+      const float slope = std::clamp(std::sqrt(dx * dx + dy * dy) * 0.5f, 0.f, 1.f);       // 0 on the flat face, 1 on the chamfer
       const float nl = std::sqrt(dx * dx + dy * dy + 1.f);
       const float nx = -dx / nl, ny = -dy / nl, nz = 1.f / nl;
       const float lit = (nx * lx + ny * ly + nz * lz) / ll;                                  // -1..1: toward / away from the light
@@ -111,7 +111,7 @@ LogoImage makeLogo(LogoStyle style) {
         // Satin black face with the same soft sheen (barely there), and the chamfer picks up gold: a fine gold inlay around every stroke.
         const float tb = 0.035f + 0.075f * sheen + brushed * 0.5f;
         float body[3] = {0.012f + tb * 0.9f, 0.012f + tb * 0.9f, 0.016f + tb};
-        for (int k = 0; k < 3; ++k) rgb[k] = lerp(body[k], rgb[k], std::clamp(slope * 1.15f, 0.f, 1.f));
+        for (int k = 0; k < 3; ++k) rgb[k] = lerp(body[k], rgb[k], sstep(0.30f, 0.85f, slope));
         (void)face;
       }
       const float sh = std::clamp(shadow[idx] * 0.55f, 0.f, 1.f) * (1.f - c);
