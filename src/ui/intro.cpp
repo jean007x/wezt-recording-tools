@@ -76,6 +76,23 @@ void Intro::paint(double t) const {
     dl->AddRectFilled(ImVec2(0, 0), size, IM_COL32(5, 5, 8, 255));
     const Pose p = poseAt(t);
     const float u = clamp01(tf / static_cast<float>(kIntroGrowEnd));
+    const float lit = std::pow(p.scale, 0.7f) * p.alpha;   // how much light the logo throws on the room
+
+    // slow rays of light fanning out from behind the logo, and soft out-of-focus lights drifting in the dark
+    for (int k = 0; k < 16; ++k) {
+      const float a0 = tf * 0.05f + static_cast<float>(k) * (2.f * kPi / 16.f), w = 0.07f + 0.05f * hash(k + 91);
+      const float R = std::max(size.x, size.y) * 0.9f;
+      dl->AddTriangleFilled(c, ImVec2(c.x + std::cos(a0 - w) * R, c.y + std::sin(a0 - w) * R), ImVec2(c.x + std::cos(a0 + w) * R, c.y + std::sin(a0 + w) * R),
+                            IM_COL32(255, 190, 90, static_cast<int>(clamp01(0.022f * lit * (0.5f + hash(k + 40))) * 255.f + 0.5f)));
+    }
+    for (std::uint32_t i = 0; i < 18; ++i) {
+      const float bx = hash(i * 11 + 1) * size.x, by = hash(i * 11 + 2) * size.y;
+      const float x = std::fmod(bx + tf * (6.f + 10.f * hash(i * 11 + 3)), size.x), y = by - 12.f * std::sin(tf * 0.5f + static_cast<float>(i));
+      const float r = (14.f + 40.f * hash(i * 11 + 4)) * (size.y / 900.f);
+      const int al = static_cast<int>(clamp01(0.10f * lit * (0.3f + hash(i * 11 + 5))) * 255.f);
+      dl->AddCircleFilled(ImVec2(x, y), r, IM_COL32(255, 200, 110, al), 24);
+      dl->AddCircle(ImVec2(x, y), r, IM_COL32(255, 220, 150, al * 2), 24, 1.f);
+    }
 
     // a gold glow behind the logo that grows with it (stacked translucent discs)
     const float glow = std::pow(p.scale, 0.8f) * (t < kIntroGrowEnd ? 0.5f + 0.5f * u : 1.f) * p.alpha;
@@ -121,6 +138,21 @@ void Intro::paint(double t) const {
       const int a = static_cast<int>(clamp01(p.alpha) * 255.f + 0.5f), v = static_cast<int>(clamp01(face) * 255.f + 0.5f);
       const ImU32 tint = IM_COL32(v, v, v, a);
       constexpr int N = 48;
+      {  // the polished floor: the logo mirrored below it, fading out with distance
+        const float gap = 0.25f, top = 0.34f * clamp01(p.alpha);
+        auto colA = [&](float al) { return IM_COL32(v, v, v, static_cast<int>(clamp01(al) * 255.f)); };
+        dl->PushTextureID(gold_);
+        for (int s = 0; s < N; ++s) {
+          const float u0 = static_cast<float>(s) / N, u1 = static_cast<float>(s + 1) / N;
+          const ImVec2 n0 = proj(u0 - 0.5f, 0.5f + gap), n1 = proj(u1 - 0.5f, 0.5f + gap), f1 = proj(u1 - 0.5f, 1.5f + gap), f0 = proj(u0 - 0.5f, 1.5f + gap);
+          // near edge shows the bottom of the picture (v = 1), far edge shows the top (v = 0)
+          dl->PrimReserve(6, 4);
+          dl->PrimQuadUV(n0, n1, f1, f0, ImVec2(u0, 1), ImVec2(u1, 1), ImVec2(u1, 0), ImVec2(u0, 0), colA(top));
+          ImDrawVert* vtx = dl->_VtxWritePtr - 4;
+          vtx[2].col = vtx[3].col = colA(0.f);   // fades to nothing at the far edge
+        }
+        dl->PopTextureID();
+      }
       float sweep = -1.f;
       static const float sweeps[3][2] = {{1.6f, 0.9f}, {2.8f, 0.9f}, {3.95f, 0.8f}};
       for (const auto& sw : sweeps) if (tf >= sw[0] && tf < sw[0] + sw[1]) sweep = -0.25f + 1.5f * (tf - sw[0]) / sw[1];
@@ -134,6 +166,14 @@ void Intro::paint(double t) const {
           if (g > 0.01f) dl->AddImageQuad(white_, q0, q1, q2, q3, ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), IM_COL32(255, 245, 215, static_cast<int>(g * 255.f)));
         }
       }
+    }
+    {  // darken the edges of the frame so the light sits in a pool of black
+      const ImU32 dk = IM_COL32(0, 0, 0, 200), cl = IM_COL32(0, 0, 0, 0);
+      const float ex = size.x * 0.28f, ey = size.y * 0.30f;
+      dl->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(ex, size.y), dk, cl, cl, dk);
+      dl->AddRectFilledMultiColor(ImVec2(size.x - ex, 0), ImVec2(size.x, size.y), cl, dk, dk, cl);
+      dl->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(size.x, ey), dk, dk, cl, cl);
+      dl->AddRectFilledMultiColor(ImVec2(0, size.y - ey), ImVec2(size.x, size.y), cl, cl, dk, dk);
     }
     // sparkle flares on the polished edges while it holds
     if (t >= kIntroGrowEnd + 0.1 && t < kIntroHoldEnd + 0.4 && gold_) {

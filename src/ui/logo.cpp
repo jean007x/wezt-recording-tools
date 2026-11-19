@@ -62,11 +62,11 @@ std::vector<float> paddedCoverage(int& W, int& H) {
   return c;
 }
 
-// Strokes made a little heavier (about one pixel each side) so the mark reads solid and substantial rather than wiry.
+// Strokes made a little heavier (about two pixels each side) so the mark reads solid and substantial rather than wiry.
 std::vector<float> thickened(const std::vector<float>& cov, int W, int H) {
-  const std::vector<float> b = blur(cov, W, H, 1);
+  const std::vector<float> b = blur(cov, W, H, 2);   // radius 2, a lower threshold: strokes grow about two pixels each side
   std::vector<float> o(cov.size());
-  for (std::size_t i = 0; i < cov.size(); ++i) o[i] = std::max(cov[i], sstep(0.10f, 0.50f, b[i]));
+  for (std::size_t i = 0; i < cov.size(); ++i) o[i] = std::max(cov[i], sstep(0.05f, 0.34f, b[i]));
   return o;
 }
 
