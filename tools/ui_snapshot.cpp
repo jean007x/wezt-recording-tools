@@ -2,7 +2,9 @@
 // without a window or a GPU, and as a regression aid. Usage: wezt_ui_snapshot out.ppm [edit|mix|sampler|immersive|assistant]
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -12,15 +14,24 @@
 #include "dsp/effect_plugins.h"
 #include "instruments/builtin.h"
 #include "ui/app.h"
+#include "ui/intro.h"
+#include "ui/logo.h"
 
 namespace {
 struct Image { int w, h; std::vector<float> rgb; };
+// Pictures the intro draws (sentinel texture ids); every other draw command samples the font atlas.
+struct Pic { int w = 0, h = 0; std::vector<unsigned char> rgba; };
+Pic g_gold, g_white;
+constexpr std::intptr_t kGoldId = 0x1090, kWhiteId = 0x1091;
 
-void rasterize(const ImDrawData* dd, const unsigned char* tex, int tw, int th, Image& img) {
+void rasterize(const ImDrawData* dd, const unsigned char* fontTex, int fontW, int fontH, Image& img) {
   for (int n = 0; n < dd->CmdListsCount; ++n) {
     const ImDrawList* dl = dd->CmdLists[n];
     for (const ImDrawCmd& cmd : dl->CmdBuffer) {
       if (cmd.UserCallback) continue;
+      const std::intptr_t id = (std::intptr_t)cmd.GetTexID();
+      const unsigned char* tex = id == kGoldId ? g_gold.rgba.data() : id == kWhiteId ? g_white.rgba.data() : fontTex;
+      const int tw = id == kGoldId ? g_gold.w : id == kWhiteId ? g_white.w : fontW, th = id == kGoldId ? g_gold.h : id == kWhiteId ? g_white.h : fontH;
       const int cx0 = std::max(0, static_cast<int>(cmd.ClipRect.x)), cy0 = std::max(0, static_cast<int>(cmd.ClipRect.y));
       const int cx1 = std::min(img.w, static_cast<int>(std::ceil(cmd.ClipRect.z))), cy1 = std::min(img.h, static_cast<int>(std::ceil(cmd.ClipRect.w)));
       for (unsigned i = 0; i + 2 < cmd.ElemCount; i += 3) {
@@ -71,6 +82,35 @@ int main(int argc, char** argv) {
   int tw = 0, th = 0;
   io.Fonts->GetTexDataAsRGBA32(&tex, &tw, &th);
   wezt::ui::App::applyTheme();
+  if (view.rfind("intro", 0) == 0) {   // "intro3.8": the opening animation 3.8 s in, on its own (no studio behind it)
+    const auto g = wezt::ui::makeGoldLogo(), w = wezt::ui::makeWhiteLogo();
+    g_gold = {g.w, g.h, g.rgba}; g_white = {w.w, w.h, w.rgba};
+    wezt::ui::Intro intro;
+    intro.setTextures((ImTextureID)kGoldId, (ImTextureID)kWhiteId, static_cast<float>(g.w) / static_cast<float>(g.h));
+    Image img{W, H, std::vector<float>(static_cast<std::size_t>(W * H) * 3, 0.f)};
+    for (int frame = 0; frame < 2; ++frame) {
+      io.DeltaTime = 1.f / 60.f;
+      ImGui::NewFrame();
+      if (frame == 1) {
+        // the studio colour sits behind the flash once the intro has opened
+        if (std::atof(view.c_str() + 5) >= wezt::ui::kIntroOpen) ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(static_cast<float>(W), static_cast<float>(H)), IM_COL32(23, 26, 31, 255));
+        intro.paint(std::atof(view.c_str() + 5));
+      }
+      ImGui::Render();
+      if (frame == 1) rasterize(ImGui::GetDrawData(), tex, tw, th, img);
+    }
+    FILE* f = std::fopen(out, "wb");
+    if (!f) { std::fprintf(stderr, "cannot write %s\n", out); return 1; }
+    std::fprintf(f, "P6\n%d %d\n255\n", W, H);
+    std::vector<unsigned char> row(static_cast<std::size_t>(W) * 3);
+    for (int y = 0; y < H; ++y) {
+      for (int x = 0; x < W * 3; ++x) row[static_cast<std::size_t>(x)] = static_cast<unsigned char>(std::clamp(img.rgb[static_cast<std::size_t>(y * W * 3 + x)], 0.f, 1.f) * 255.f + 0.5f);
+      std::fwrite(row.data(), 1, row.size(), f);
+    }
+    std::fclose(f);
+    std::printf("wrote %s (%s)\n", out, view.c_str());
+    return 0;
+  }
   wezt::ui::App app;
   app.loadDemo();
   // run a little audio so the meters and the playhead have something to show
@@ -121,6 +161,7 @@ int main(int argc, char** argv) {
     app.selectPluginParam(t, 0, static_cast<int>(pid));
     app.showPluginParams(true);
   }
+  if (view == "settings") { app.setView(wezt::ui::MainView::Edit); app.showSettings(true); }
   if (view == "immersive") { app.setView(wezt::ui::MainView::Edit); app.showImmersive(true); }
   app.setRange(static_cast<std::int64_t>(48000 * 1.0), static_cast<std::int64_t>(48000 * 2.5));
   Image img{W, H, std::vector<float>(static_cast<std::size_t>(W * H) * 3, 0.f)};

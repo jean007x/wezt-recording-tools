@@ -103,3 +103,8 @@ app on all three, and hosts real VST3/CLAP plug-ins on all three. `.github/workf
 archives (app, `wezt-mcp`, `wezt_voice_takes`, docs) for the three systems: run it by hand or push a tag like `v0.8.0` to
 publish a release. Unsigned means Windows SmartScreen and macOS Gatekeeper will warn. MSVC gets `_USE_MATH_DEFINES`,
 `NOMINMAX` and `/utf-8`.
+
+## Opening intro
+
+Wezt starts with a short animated intro (your logo as spinning gold, a cinematic sound ending in a metal clash). Turn it off or use
+your own WAV/MP3 under **File > Settings...**. Details in [docs/UI.md](docs/UI.md). MP3 decoding: minimp3 (CC0), in `third_party/minimp3`.

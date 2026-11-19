@@ -29,6 +29,8 @@
 #include "instruments/sampler.h"
 #include "session/session.h"
 #include "ui/commands.h"
+#include "ui/intro_sound.h"
+#include "util/prefs.h"
 
 namespace wezt::ui {
 
@@ -68,6 +70,12 @@ class App {
   void frame();                      // call once per ImGui frame, between NewFrame() and Render()
   bool animating() const;            // true while something moves (playing, meters, dragging)
   bool wantsQuit() const { return quit_; }
+  // ---- settings (File > Settings...) ----
+  const Prefs& prefs() const { return prefs_; }
+  void showSettings(bool on) { showSettings_ = on; }
+  bool takeIntroReplay() { const bool r = introReplay_; introReplay_ = false; return r; }   // the window asked to play the intro again
+  bool setIntroSound(const std::string& path, std::string* message);   // "" = built-in; checks the file can be read, then saves
+  void setIntroEnabled(bool on);
   static void loadFonts(float scale = 1.f);   // embedded Roboto Medium; call before the first frame
   static void applyTheme();          // colours and spacing; call once after the ImGui context exists
   void setStatus(const std::string& s) { status_ = s; }
@@ -286,6 +294,11 @@ class App {
   bool pluginCommandFromText(const std::string& low, std::string& reply);
   std::map<session::TrackId, std::vector<session::Clip>> snap_;
   bool snapInit_ = false;
+  Prefs prefs_;
+  bool showSettings_ = false, introReplay_ = false, browsing_ = false;
+  std::string browseDir_, introSoundMsg_, introPathEdit_;
+  std::unique_ptr<IntroPlayer> introPreview_;
+  void drawSettings();
   bool showMemory_ = false, showAssistant_ = false, showClips_ = false, showPianoRoll_ = false, showVoiceBank_ = false, showPlugParams_ = false, showScore_ = false;
   std::vector<MidiPart> midiParts_;
   int selPart_ = -1;

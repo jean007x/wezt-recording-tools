@@ -119,3 +119,30 @@ release it. Notes play the selected part's instrument; the sustain pedal, pitch 
 
 Recording automation in the Plugin Parameters window, thinning what was recorded when the song stops, and clearing a lane
 are all undo steps. One recording pass is one step (they share a merge key), so a single Undo removes the whole pass.
+
+## Start-up intro and Settings
+
+When Wezt starts it plays a short opening: the logo (the project owner's logo, shaded as gold metal) grows from a speck while it
+spins in 3D, lands with a shock ring and a glint, holds for a moment with the name under it, then spins back down to a speck;
+that is when the studio window opens, on a flash. The sound is synthesized in code (a rising drone and noise sweep, a sub boom on
+the landing, a falling whoosh, and four quick strikes of inharmonic "steel" partials with a scrape for the metal clash); it uses
+no recordings. Click or press any key to skip it.
+
+**File > Settings...** has:
+
+- a switch to turn the intro off (saved; Wezt then opens straight to the studio),
+- the intro sound: the built-in one, or **your own WAV or MP3** (the first 30 s are used). "Choose a file..." opens a small file
+  browser inside the window; the file is checked before it is accepted and the result (length, rate, or the reason it was
+  refused) is shown. A custom file replaces the whole built-in sound, and keeps playing into the studio if it is longer than the animation,
+- "Play the sound" and "Watch the intro again" to try it.
+
+Settings are kept in a small text file: `%APPDATA%\Wezt\settings.txt` (Windows), `~/Library/Application Support/Wezt/settings.txt`
+(macOS), `~/.config/wezt/settings.txt` (Linux). `WEZT_CONFIG_DIR` overrides the folder.
+
+What is tested: the settings file, WAV and MP3 loading (a real MP3 is decoded and its pitch checked), the synthesized sound (energy
+build-up, impact, the clash at the opening, silent start and end), the logo picture, and the Settings window's save logic; the
+animation is rendered headless (`wezt_ui_snapshot out.ppm intro3.9`). **Not tested:** the animation and sound on a real screen and real
+speakers, and that the visuals and the sound line up on a given machine (the picture runs on the frame clock, the sound on the
+device clock).
+Playback goes through the system's default output; with no audio backend (e.g. Linux builds) the intro is silent.
+MP3 decoding uses minimp3 (CC0, `third_party/minimp3`). Other formats (OGG, FLAC, AAC) are not read.

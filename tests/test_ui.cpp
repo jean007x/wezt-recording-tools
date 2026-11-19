@@ -41,6 +41,13 @@ static void press(App& app, ImGuiKey key, bool ctrl = false, bool shift = false,
 }
 
 int main() {
+  const std::filesystem::path cfg = std::filesystem::temp_directory_path() / "wezt_ui_test_config";
+  std::filesystem::remove_all(cfg);
+#if defined(_WIN32)
+  _putenv_s("WEZT_CONFIG_DIR", cfg.string().c_str());
+#else
+  setenv("WEZT_CONFIG_DIR", cfg.string().c_str(), 1);
+#endif
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGuiIO& io = ImGui::GetIO();
@@ -417,7 +424,33 @@ int main() {
       CHECK(count() == 2);                                  // the drawn point is one undo step
     }
     app.showPluginParams(false);
+
+    {  // File > Settings: the intro switch and the intro sound are saved in the settings file
+      CHECK(app.prefs().introEnabled && app.prefs().introSoundPath.empty());
+      app.showSettings(true); frames(app, 3);                 // the window draws
+      app.setIntroEnabled(false);
+      CHECK(!loadPrefs().introEnabled);
+      app.setIntroEnabled(true);
+      CHECK(loadPrefs().introEnabled);
+      std::string m;
+      CHECK(!app.setIntroSound("/definitely/not/here.wav", &m) && !m.empty() && app.prefs().introSoundPath.empty());
+      CHECK(!app.setIntroSound("/definitely/not/here.flac", &m) && m.find("WAV or MP3") != std::string::npos);
+      const std::string wav = (cfg / "mine.wav").string();
+      {
+        io::WavWriter ww; std::string e;
+        CHECK(ww.open(wav, 1, 44100, io::WavSampleType::Int16, &e));
+        std::vector<float> x(22050, 0.25f); const float* p = x.data();
+        CHECK(ww.write(&p, x.size()) && ww.finalize(&e));
+      }
+      CHECK(app.setIntroSound(wav, &m) && m.rfind("Using your file", 0) == 0);
+      CHECK(loadPrefs().introSoundPath == wav);
+      frames(app, 3);
+      CHECK(app.setIntroSound("", &m) && loadPrefs().introSoundPath.empty());
+      CHECK(!app.takeIntroReplay());
+      app.showSettings(false); frames(app, 2);
+    }
   }
+  std::filesystem::remove_all(cfg);
   ImGui::DestroyContext();
   std::printf(failures ? "FAILED\n" : "ui tests passed\n");
   return failures;

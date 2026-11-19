@@ -47,6 +47,7 @@ ImGuiKey toImGui(Key k) {
 }  // namespace
 
 App::App() {
+  prefs_ = loadPrefs();
   session_ = std::make_unique<session::Session>(48000.0, 2, 512);
   engine_ = std::make_unique<Engine>(session_->graph(), 512, 2, 48000.0, 60);
   session_->attach(engine_->context());
@@ -558,6 +559,7 @@ void App::frame() {
     ImGui::End();
   }
   drawFileDialog();
+  drawSettings();
   drawStatus();
 }
 
@@ -584,6 +586,8 @@ void App::drawMenu() {
   if (ImGui::BeginMenu("File")) {
     item(Command::NewSession); item(Command::OpenSession); item(Command::SaveSession); ImGui::Separator();
     item(Command::ImportAudio); item(Command::BounceMix); ImGui::Separator();
+    if (ImGui::MenuItem("Settings...")) showSettings_ = true;
+    ImGui::Separator();
     if (ImGui::MenuItem("Quit")) quit_ = true;
     ImGui::EndMenu();
   }

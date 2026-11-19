@@ -29,6 +29,10 @@ add_library(wezt_core
   src/engine/graph.cpp
   src/engine/engine.cpp
   src/io/wav.cpp
+  src/io/audio_file.cpp
+  src/util/prefs.cpp
+  src/ui/logo.cpp
+  src/ui/intro_sound.cpp
   src/audio/null_device.cpp
   src/audio/wasapi_device.cpp
   src/audio/coreaudio_device.cpp
@@ -85,6 +89,7 @@ add_library(wezt_core
   src/immersive/loudness.cpp
   src/immersive/adm.cpp)
 target_include_directories(wezt_core PUBLIC src include)
+target_include_directories(wezt_core SYSTEM PRIVATE third_party/minimp3)
 if(MSVC)
   target_compile_options(wezt_core PRIVATE /W4)
 else()
@@ -285,6 +290,11 @@ add_executable(wezt_param_automation_test tests/test_param_automation.cpp)
 target_link_libraries(wezt_param_automation_test PRIVATE wezt_core)
 add_test(NAME wezt_param_automation_test COMMAND wezt_param_automation_test)
 
+add_executable(wezt_intro_test tests/test_intro.cpp)
+target_link_libraries(wezt_intro_test PRIVATE wezt_core)
+target_compile_definitions(wezt_intro_test PRIVATE WEZT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+add_test(NAME wezt_intro_test COMMAND wezt_intro_test)
+
 add_executable(wezt_session_test tests/test_session.cpp)
 target_link_libraries(wezt_session_test PRIVATE wezt_core)
 add_test(NAME wezt_session_test COMMAND wezt_session_test)
@@ -300,7 +310,7 @@ if(WEZT_BUILD_UI)
     message(FATAL_ERROR "WEZT_IMGUI_DIR must point at a Dear ImGui checkout")
   endif()
   add_library(wezt_ui STATIC
-    src/ui/app.cpp src/ui/app_edit.cpp src/ui/app_mix.cpp src/ui/app_sampler.cpp src/ui/app_immersive.cpp src/ui/app_demo.cpp src/ui/app_assistant.cpp src/ui/app_clips.cpp src/ui/app_midi.cpp src/ui/app_voice.cpp src/ui/app_plugins.cpp
+    src/ui/app.cpp src/ui/app_edit.cpp src/ui/app_mix.cpp src/ui/app_sampler.cpp src/ui/app_immersive.cpp src/ui/app_demo.cpp src/ui/app_assistant.cpp src/ui/app_clips.cpp src/ui/app_midi.cpp src/ui/app_voice.cpp src/ui/app_plugins.cpp src/ui/app_settings.cpp src/ui/intro.cpp
     ${WEZT_IMGUI_DIR}/imgui.cpp ${WEZT_IMGUI_DIR}/imgui_draw.cpp ${WEZT_IMGUI_DIR}/imgui_tables.cpp ${WEZT_IMGUI_DIR}/imgui_widgets.cpp
     ${WEZT_IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp)
   target_include_directories(wezt_ui PUBLIC src ${WEZT_IMGUI_DIR})
