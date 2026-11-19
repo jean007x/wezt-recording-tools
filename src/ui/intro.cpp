@@ -21,6 +21,10 @@ float hash(std::uint32_t n) { n ^= n >> 16; n *= 0x7feb352dU; n ^= n >> 15; n *=
 
 struct Pose { float scale, yaw, tilt, alpha; };
 
+// The sway after landing: a slow turn left and right, a little nod, both dying out. They end where the spin back down picks up.
+float holdYaw(float s) { return 0.34f * std::sin(s * 4.2f) * std::exp(-s * 0.9f); }
+float holdTilt(float s) { return 0.13f * std::sin(s * 3.1f) * std::exp(-s * 0.7f); }
+
 Pose poseAt(double t) {
   Pose p{0.f, 0.f, 0.f, 1.f};
   const float tf = static_cast<float>(t);
@@ -33,12 +37,13 @@ Pose poseAt(double t) {
   } else if (t < kIntroHoldEnd) {   // landed: one small recoil, a slow sway that dies out
     const float s = tf - static_cast<float>(kIntroGrowEnd);
     p.scale = 1.f + 0.06f * std::exp(-s * 8.f) * std::cos(s * 18.f);
-    p.yaw = 0.07f * std::sin(s * 3.2f) * std::exp(-s * 0.6f);
+    p.yaw = holdYaw(s);
+    p.tilt = holdTilt(s);
   } else if (t < kIntroOpen) {   // spinning back down to a speck, faster and faster
     const float v = (tf - static_cast<float>(kIntroHoldEnd)) / static_cast<float>(kIntroOpen - kIntroHoldEnd);
     p.scale = 1.f - 0.975f * std::pow(v, 2.2f);
-    p.yaw = 2.f * 2.f * kPi * v * v + 0.07f * std::sin(0.7f * 3.2f) * std::exp(-0.7f * 0.6f) * (1.f - v);
-    p.tilt = -0.15f * std::sin(kPi * v);
+    p.yaw = 2.f * 2.f * kPi * v * v + holdYaw(0.7f) * (1.f - v);
+    p.tilt = -0.15f * std::sin(kPi * v) + holdTilt(0.7f) * (1.f - v);
   } else p.alpha = 0.f;
   return p;
 }
@@ -127,9 +132,11 @@ void Intro::paint(double t) const {
     // the logo: 48 vertical strips, each projected in 3D (spin about the vertical axis, a little tilt, perspective)
     if (p.alpha > 0.002f && p.scale > 0.f && gold_) {
       const float cy = std::cos(p.yaw), sy = std::sin(p.yaw), cx = std::cos(p.tilt), sx = std::sin(p.tilt);
-      auto proj = [&](float lx, float ly) {
-        const float x = lx * W0 * p.scale, y = ly * H0 * p.scale;
-        const float x1 = x * cy, z1 = -x * sy;
+      // zo is depth in the logo's own space (0 = the face, positive = toward the back): it turns with the logo, so the thickness
+      // shows as side walls whenever the logo is not facing straight at the viewer.
+      auto proj = [&](float lx, float ly, float zo = 0.f) {
+        const float x = lx * W0 * p.scale, y = ly * H0 * p.scale, zz = zo * W0 * p.scale;
+        const float x1 = x * cy + zz * sy, z1 = -x * sy + zz * cy;
         const float y2 = y * cx - z1 * sx, z2 = y * sx + z1 * cx;
         const float k = d / std::max(0.2f * d, d + z2);
         return ImVec2(c.x + x1 * k, c.y + y2 * k);
@@ -138,6 +145,26 @@ void Intro::paint(double t) const {
       const int a = static_cast<int>(clamp01(p.alpha) * 255.f + 0.5f), v = static_cast<int>(clamp01(face) * 255.f + 0.5f);
       const ImU32 tint = IM_COL32(v, v, v, a);
       constexpr int N = 48;
+      {  // the thickness: a stack of copies of the outline behind the face, bright at the front edge, dark at the back
+        constexpr int L = 18; constexpr int NS = 12;
+        const float depth = 0.06f;
+        dl->PushTextureID(white_ ? white_ : gold_);
+        for (int k = L; k >= 1; --k) {
+          const float f = static_cast<float>(k) / L;   // 1 = deepest
+          const float zo = depth * f;
+          const float r0 = black_ ? 70.f : 205.f, g0 = black_ ? 70.f : 150.f, b0 = black_ ? 80.f : 45.f;   // the edge catching light
+          const float r1 = black_ ? 8.f : 52.f, g1 = black_ ? 8.f : 32.f, b1 = black_ ? 10.f : 7.f;         // the shadowed back
+          const float m = std::pow(f, 0.7f);
+          const ImU32 sideCol = IM_COL32(static_cast<int>((r0 + (r1 - r0) * m) * face), static_cast<int>((g0 + (g1 - g0) * m) * face), static_cast<int>((b0 + (b1 - b0) * m) * face), a);
+          for (int s = 0; s < NS; ++s) {
+            const float u0 = static_cast<float>(s) / NS, u1 = static_cast<float>(s + 1) / NS;
+            dl->PrimReserve(6, 4);
+            dl->PrimQuadUV(proj(u0 - 0.5f, -0.5f, zo), proj(u1 - 0.5f, -0.5f, zo), proj(u1 - 0.5f, 0.5f, zo), proj(u0 - 0.5f, 0.5f, zo),
+                           ImVec2(u0, 0), ImVec2(u1, 0), ImVec2(u1, 1), ImVec2(u0, 1), sideCol);
+          }
+        }
+        dl->PopTextureID();
+      }
       {  // the polished floor: the logo mirrored below it, fading out with distance
         const float gap = 0.25f, top = 0.34f * clamp01(p.alpha);
         auto colA = [&](float al) { return IM_COL32(v, v, v, static_cast<int>(clamp01(al) * 255.f)); };

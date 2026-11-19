@@ -39,6 +39,7 @@ Prefs loadPrefs(const std::string& path) {
     if (eq == std::string::npos) continue;
     const std::string k = line.substr(0, eq), v = line.substr(eq + 1);
     if (k == "intro") p.introEnabled = v != "0";
+    else if (k == "intro_logo") p.introLogoBlack = v != "gold";
     else if (k == "intro_sound") p.introSoundPath = v;
   }
   return p;
@@ -53,6 +54,7 @@ bool savePrefs(const Prefs& p, const std::string& path) {
     std::ofstream f(tmp, std::ios::trunc);
     if (!f) return false;
     f << "intro=" << (p.introEnabled ? 1 : 0) << "\n";
+    f << "intro_logo=" << (p.introLogoBlack ? "black" : "gold") << "\n";
     f << "intro_sound=" << p.introSoundPath << "\n";
     if (!f) return false;
   }

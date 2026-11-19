@@ -31,6 +31,11 @@ void App::setIntroEnabled(bool on) {
   savePrefs(prefs_);
 }
 
+void App::setIntroLogoBlack(bool black) {
+  prefs_.introLogoBlack = black;
+  savePrefs(prefs_);
+}
+
 bool App::setIntroSound(const std::string& path, std::string* message) {
   if (path.empty()) {
     prefs_.introSoundPath.clear();
@@ -60,6 +65,12 @@ void App::drawSettings() {
   bool on = prefs_.introEnabled;
   if (ImGui::Checkbox("Play the opening intro when Wezt starts (spinning gold logo, cinematic sound)", &on)) setIntroEnabled(on);
   ImGui::TextDisabled("Click or press any key during the intro to skip it. Turn it off here to open straight to the studio.");
+
+  ImGui::Spacing();
+  ImGui::TextUnformatted("Logo in the intro");
+  if (ImGui::RadioButton("Polished black with a gold rim", prefs_.introLogoBlack)) setIntroLogoBlack(true);
+  ImGui::SameLine();
+  if (ImGui::RadioButton("Polished gold", !prefs_.introLogoBlack)) setIntroLogoBlack(false);
 
   ImGui::Spacing();
   ImGui::TextUnformatted("Intro sound");

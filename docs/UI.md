@@ -122,7 +122,7 @@ are all undo steps. One recording pass is one step (they share a merge key), so 
 
 ## Start-up intro and Settings
 
-When Wezt starts it plays a short opening: the logo (the project owner's logo, rendered as heavy polished gold: thickened strokes, rounded bevel, studio reflections, a fine outline, soft drop shadow, a mirror-polished floor reflection) on a black stage with slow light rays, drifting bokeh and a vignette grows from a speck while it
+When Wezt starts it plays a short opening: the logo (the project owner's logo, a solid slab with real thickness (side walls that show as it spins and sways), by default polished black with a fine gold rim, or heavy polished gold, chosen in Settings: thickened strokes, rounded bevel, studio reflections, a fine outline, soft drop shadow, a mirror-polished floor reflection) on a black stage with slow light rays, drifting bokeh and a vignette grows from a speck while it
 spins in 3D, lands with a shock ring and a glint, holds for a moment with the name under it, then spins back down to a speck;
 that is when the studio window opens, on a flash. The sound is synthesized in code (a rising drone and noise sweep, a sub boom on
 the landing, a falling whoosh, and four quick strikes of inharmonic "steel" partials with a scrape for the metal clash); it uses
@@ -131,6 +131,7 @@ no recordings. Click or press any key to skip it.
 **File > Settings...** has:
 
 - a switch to turn the intro off (saved; Wezt then opens straight to the studio),
+- the logo's look: polished black with a gold rim (default) or polished gold,
 - the intro sound: the built-in one, or **your own WAV or MP3** (the first 30 s are used). "Choose a file..." opens a small file
   browser inside the window; the file is checked before it is accepted and the result (length, rate, or the reason it was
   refused) is shown. A custom file replaces the whole built-in sound, and keeps playing into the studio if it is longer than the animation,

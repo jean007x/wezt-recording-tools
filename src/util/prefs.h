@@ -8,6 +8,7 @@ namespace wezt {
 
 struct Prefs {
   bool introEnabled = true;        // play the opening animation and sound at start-up
+  bool introLogoBlack = true;      // the logo in polished black (true) or polished gold (false)
   std::string introSoundPath;      // empty = the built-in sound; otherwise a WAV or MP3 the user chose
 };
 

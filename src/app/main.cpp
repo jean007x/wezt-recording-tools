@@ -68,14 +68,23 @@ int main(int argc, char** argv) {
   {
     // The opening intro (File > Settings turns it off or changes its sound). The studio is created when it opens.
     const wezt::Prefs prefs = wezt::loadPrefs();
-    const auto goldImg = wezt::ui::makeGoldLogo(), whiteImg = wezt::ui::makeWhiteLogo();
-    const GLuint goldTex = uploadTexture(goldImg), whiteTex = uploadTexture(whiteImg);
+    // The logo pictures are built (and uploaded) for the style chosen in Settings; a replay after a change builds them again.
+    GLuint goldTex = 0, whiteTex = 0; bool texBlack = true; float texAspect = 1.f;
+    auto loadLogo = [&](bool black) {
+      if (goldTex && texBlack == black) return;
+      if (goldTex) { glDeleteTextures(1, &goldTex); glDeleteTextures(1, &whiteTex); }
+      const auto face = wezt::ui::makeLogo(black ? wezt::ui::LogoStyle::Black : wezt::ui::LogoStyle::Gold), white = wezt::ui::makeWhiteLogo();
+      goldTex = uploadTexture(face); whiteTex = uploadTexture(white);
+      texBlack = black; texAspect = static_cast<float>(face.w) / static_cast<float>(face.h);
+    };
     wezt::ui::Intro intro;
     wezt::ui::IntroPlayer introSound;
     auto startIntro = [&] {
-      intro.setTextures(asTexture(goldTex), asTexture(whiteTex), static_cast<float>(goldImg.w) / static_cast<float>(goldImg.h));
+      const wezt::Prefs now = wezt::loadPrefs();   // re-read: a replay picks up a sound or logo style chosen meanwhile
+      loadLogo(now.introLogoBlack);
+      intro.setTextures(asTexture(goldTex), asTexture(whiteTex), texAspect, now.introLogoBlack);
       std::string m;
-      introSound.start(wezt::loadPrefs().introSoundPath, &m);   // re-read: a replay picks up a sound chosen meanwhile
+      introSound.start(now.introSoundPath, &m);
       intro.begin();
     };
     if (prefs.introEnabled) startIntro();

@@ -432,6 +432,10 @@ int main() {
       CHECK(!loadPrefs().introEnabled);
       app.setIntroEnabled(true);
       CHECK(loadPrefs().introEnabled);
+      CHECK(app.prefs().introLogoBlack);
+      app.setIntroLogoBlack(false);
+      CHECK(!loadPrefs().introLogoBlack);
+      app.setIntroLogoBlack(true);
       std::string m;
       CHECK(!app.setIntroSound("/definitely/not/here.wav", &m) && !m.empty() && app.prefs().introSoundPath.empty());
       CHECK(!app.setIntroSound("/definitely/not/here.flac", &m) && m.find("WAV or MP3") != std::string::npos);

@@ -84,7 +84,7 @@ LogoImage makeWhiteLogo() {
   return im;
 }
 
-LogoImage makeGoldLogo() {
+LogoImage makeLogo(LogoStyle style) {
   int W = 0, H = 0;
   const std::vector<float> base = paddedCoverage(W, H);
   const std::vector<float> cov = thickened(base, W, H);
@@ -119,6 +119,18 @@ LogoImage makeGoldLogo() {
       t *= 1.f - 0.50f * edge;                                              // a fine dark outline around every stroke
       t += 0.20f * sstep(0.10f, 0.0f, Ht(x + 1, y + 1) - Ht(x - 1, y - 1)) * c * c;   // a hairline of light on the top-left lip
       float rgb[3]; ramp(t, rgb);
+      if (style == LogoStyle::Black) {
+        // Black lacquer: almost no body colour, only the reflections of the studio show (white-silver streaks on black), and a fine
+        // gold rim runs along every edge like a gold inlay.
+        const float hl = std::pow(std::clamp(env, 0.f, 1.f), 2.4f);
+        float tb = 0.02f + 0.50f * hl + 0.10f * diff + 0.55f * spec + grain * 0.6f;
+        tb *= 1.f - 0.35f * edge;
+        static const float bs[5][3] = {{0.006f, 0.006f, 0.008f}, {0.035f, 0.035f, 0.045f}, {0.17f, 0.17f, 0.20f}, {0.62f, 0.63f, 0.70f}, {1.f, 1.f, 1.f}};
+        const float f4 = std::clamp(tb, 0.f, 1.f) * 4.f; const int bi = std::min(3, static_cast<int>(f4)); const float bf = f4 - static_cast<float>(bi);
+        float body[3]; for (int k = 0; k < 3; ++k) body[k] = lerp(bs[bi][k], bs[bi + 1][k], bf);
+        const float rim = c * (1.f - sstep(0.62f, 0.92f, soft[idx]));   // within ~2 px of an edge
+        for (int k = 0; k < 3; ++k) rgb[k] = lerp(body[k], rgb[k], std::clamp(rim * 0.95f, 0.f, 1.f));
+      }
       const float sh = std::clamp(shadow[idx] * 0.70f, 0.f, 1.f) * (1.f - c);
       const float a = c + sh;
       unsigned char* p = &im.rgba[idx * 4];

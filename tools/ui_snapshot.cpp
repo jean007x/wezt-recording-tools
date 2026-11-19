@@ -83,10 +83,11 @@ int main(int argc, char** argv) {
   io.Fonts->GetTexDataAsRGBA32(&tex, &tw, &th);
   wezt::ui::App::applyTheme();
   if (view.rfind("intro", 0) == 0) {   // "intro3.8": the opening animation 3.8 s in, on its own (no studio behind it)
-    const auto g = wezt::ui::makeGoldLogo(), w = wezt::ui::makeWhiteLogo();
+    const bool gold = !view.empty() && view.back() == 'g';   // "intro4.2g" = the gold version, otherwise black
+    const auto g = wezt::ui::makeLogo(gold ? wezt::ui::LogoStyle::Gold : wezt::ui::LogoStyle::Black), w = wezt::ui::makeWhiteLogo();
     g_gold = {g.w, g.h, g.rgba}; g_white = {w.w, w.h, w.rgba};
     wezt::ui::Intro intro;
-    intro.setTextures((ImTextureID)kGoldId, (ImTextureID)kWhiteId, static_cast<float>(g.w) / static_cast<float>(g.h));
+    intro.setTextures((ImTextureID)kGoldId, (ImTextureID)kWhiteId, static_cast<float>(g.w) / static_cast<float>(g.h), !gold);
     Image img{W, H, std::vector<float>(static_cast<std::size_t>(W * H) * 3, 0.f)};
     for (int frame = 0; frame < 2; ++frame) {
       io.DeltaTime = 1.f / 60.f;

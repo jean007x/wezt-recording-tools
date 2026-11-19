@@ -10,7 +10,7 @@ namespace wezt::ui {
 
 class Intro {
  public:
-  void setTextures(ImTextureID gold, ImTextureID white, float aspect) { gold_ = gold; white_ = white; aspect_ = aspect; }
+  void setTextures(ImTextureID face, ImTextureID white, float aspect, bool black) { gold_ = face; white_ = white; aspect_ = aspect; black_ = black; }
   void begin() { t_ = 0; active_ = true; skipped_ = false; }
   bool active() const { return active_; }                 // until the flash is over
   bool running() const { return active_ && t_ < kIntroOpen; }    // full-screen part: the main window is not drawn yet
@@ -26,7 +26,7 @@ class Intro {
   ImTextureID gold_{}, white_{};
   float aspect_ = 640.f / 216.f;
   double t_ = 0;
-  bool active_ = false, skipped_ = false;
+  bool active_ = false, skipped_ = false, black_ = true;
 };
 
 }  // namespace wezt::ui

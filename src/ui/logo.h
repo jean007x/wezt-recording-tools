@@ -10,7 +10,8 @@ struct LogoImage {
   std::vector<unsigned char> rgba;   // straight (not premultiplied) alpha, w*h*4
 };
 
-LogoImage makeGoldLogo();    // embossed gold
+enum class LogoStyle { Gold, Black };
+LogoImage makeLogo(LogoStyle style);   // polished gold, or polished black with a fine gold rim
 LogoImage makeWhiteLogo();   // same shape in white: drawn over the gold for the moving glint
 // Half-size copies down to 1x1 (for textures that are drawn much smaller than their size). [0] is the input.
 std::vector<LogoImage> mipChain(const LogoImage& base);

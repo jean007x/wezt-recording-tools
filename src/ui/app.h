@@ -76,6 +76,7 @@ class App {
   bool takeIntroReplay() { const bool r = introReplay_; introReplay_ = false; return r; }   // the window asked to play the intro again
   bool setIntroSound(const std::string& path, std::string* message);   // "" = built-in; checks the file can be read, then saves
   void setIntroEnabled(bool on);
+  void setIntroLogoBlack(bool black);
   static void loadFonts(float scale = 1.f);   // embedded Roboto Medium; call before the first frame
   static void applyTheme();          // colours and spacing; call once after the ImGui context exists
   void setStatus(const std::string& s) { status_ = s; }

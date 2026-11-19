@@ -28,11 +28,11 @@ static void testPrefs() {
   fs::remove_all(dir);
   const std::string file = (dir / "sub" / "settings.txt").string();
   Prefs d = loadPrefs(file);                                  // no file: defaults
-  CHECK(d.introEnabled && d.introSoundPath.empty());
-  Prefs p; p.introEnabled = false; p.introSoundPath = "/music/my intro = v2.mp3";
+  CHECK(d.introEnabled && d.introLogoBlack && d.introSoundPath.empty());
+  Prefs p; p.introEnabled = false; p.introLogoBlack = false; p.introSoundPath = "/music/my intro = v2.mp3";
   CHECK(savePrefs(p, file));                                  // creates the folder
   Prefs q = loadPrefs(file);
-  CHECK(!q.introEnabled && q.introSoundPath == "/music/my intro = v2.mp3");
+  CHECK(!q.introEnabled && !q.introLogoBlack && q.introSoundPath == "/music/my intro = v2.mp3");
   p.introEnabled = true; p.introSoundPath.clear();
   CHECK(savePrefs(p, file));
   q = loadPrefs(file);
@@ -125,7 +125,7 @@ static void testSound() {
 }
 
 static void testLogo() {
-  const ui::LogoImage g = ui::makeGoldLogo(), w = ui::makeWhiteLogo();
+  const ui::LogoImage g = ui::makeLogo(ui::LogoStyle::Gold), w = ui::makeWhiteLogo();
   CHECK(g.w == 680 && g.h == 256 && w.w == g.w && w.h == g.h);
   CHECK(g.rgba.size() == static_cast<std::size_t>(g.w * g.h) * 4);
   double cover = 0, r = 0, gr = 0, bl = 0; std::size_t solid = 0;
@@ -140,6 +140,14 @@ static void testLogo() {
   r /= static_cast<double>(solid); gr /= static_cast<double>(solid); bl /= static_cast<double>(solid);
   CHECK(r > gr && gr > bl && r > 150 && bl < 140);                    // it is gold: red > green > blue, and bright enough
   CHECK(g.rgba[3] == 0);                                              // the corner is empty
+  {  // the black version: same shape, but dark overall (bright only in reflections and the gold rim)
+    const ui::LogoImage b = ui::makeLogo(ui::LogoStyle::Black);
+    CHECK(b.w == g.w && b.h == g.h);
+    double lumB = 0, lumG = 0; std::size_t n = 0;
+    for (std::size_t i = 0; i < static_cast<std::size_t>(g.w * g.h); ++i)
+      if (g.rgba[i * 4 + 3] > 250 && b.rgba[i * 4 + 3] > 250) { lumB += b.rgba[i * 4] + b.rgba[i * 4 + 1] + b.rgba[i * 4 + 2]; lumG += g.rgba[i * 4] + g.rgba[i * 4 + 1] + g.rgba[i * 4 + 2]; ++n; }
+    CHECK(n > 1000 && lumB < lumG * 0.45);
+  }
   const auto m = ui::mipChain(g);
   CHECK(m.size() == 10 && m.front().w == 680 && m.back().w == 1 && m.back().h == 1);
   bool ok = true;
