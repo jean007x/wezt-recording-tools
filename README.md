@@ -106,5 +106,5 @@ publish a release. Unsigned means Windows SmartScreen and macOS Gatekeeper will 
 
 ## Opening intro
 
-Wezt starts with a short animated intro (your logo as spinning gold, a cinematic sound ending in a metal clash). Turn it off or use
+Wezt starts with a short animated intro (your logo as a polished 3D metal object in a movie-studio style opening, a cinematic sound ending in a metal clash). Turn it off or use
 your own WAV/MP3 under **File > Settings...**. Details in [docs/UI.md](docs/UI.md). MP3 decoding: minimp3 (CC0), in `third_party/minimp3`.

@@ -50,6 +50,8 @@ Pose poseAt(double t) {
 
 }  // namespace
 
+IntroPose introPose(double t) { const Pose p = poseAt(t); return {p.scale, p.yaw, p.tilt, p.alpha}; }
+
 void Intro::skip() {
   if (!active_ || t_ >= kIntroOpen) return;
   t_ = kIntroOpen;
@@ -78,6 +80,14 @@ void Intro::paint(double t) const {
   const float d = 1.7f * W0;
   auto col = [](int r, int g, int b, float a) { return IM_COL32(r, g, b, static_cast<int>(clamp01(a) * 255.f + 0.5f)); };
 
+  if (t < kIntroOpen && glMode_) {
+    if (tf > 0.4f && tf < 5.4f) {
+      const char* hint = "Click or press any key to skip";
+      const ImVec2 ts = ImGui::CalcTextSize(hint);
+      dl->AddText(ImVec2(c.x - ts.x * 0.5f, size.y - ts.y - 18.f), IM_COL32(190, 190, 190, static_cast<int>(55.f * smooth(0.4f, 1.2f, tf))), hint);
+    }
+    return;
+  }
   if (t < kIntroOpen) {
     // A black room and nothing else. The only things in it: one soft pool of warm light that grows with the logo, a faint polished floor,
     // and, when the logo lands, one thin streak of light across the frame. Restraint is the point.

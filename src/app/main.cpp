@@ -13,6 +13,7 @@
 
 #include "ui/app.h"
 #include "ui/intro.h"
+#include "ui/intro_gl.h"
 #include "ui/intro_sound.h"
 #include "ui/logo.h"
 
@@ -48,10 +49,20 @@ int main(int argc, char** argv) {
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
   const char* glsl = "#version 150";
 #else
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-  const char* glsl = "#version 130";
+  // Ask for a modern core context first (the cinematic intro needs OpenGL 3.3); an older driver gets the 3.0 one the rest of the app is happy with.
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+  const char* glsl = "#version 150";
 #endif
   GLFWwindow* window = glfwCreateWindow(1500, 920, "Wezt Recording Tools", nullptr, nullptr);
+#if !defined(__APPLE__)
+  if (!window) {
+    glfwDefaultWindowHints();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glsl = "#version 130";
+    window = glfwCreateWindow(1500, 920, "Wezt Recording Tools", nullptr, nullptr);
+  }
+#endif
   if (!window) { std::fprintf(stderr, "Could not open a window\n"); glfwTerminate(); return 1; }
   glfwMakeContextCurrent(window);
   glfwSwapInterval(1);
@@ -78,11 +89,24 @@ int main(int argc, char** argv) {
       texBlack = black; texAspect = static_cast<float>(face.w) / static_cast<float>(face.h);
     };
     wezt::ui::Intro intro;
+    // The cinematic (GPU) intro. If this machine's OpenGL cannot do it, the plain 2D intro runs instead.
+    wezt::ui::IntroRenderer introGl;
+    bool introGlBlack = true;
+    auto prepareGl = [&](bool black) {
+      if (introGl.ready() && introGlBlack == black) return;
+      std::string e;
+      if (introGl.ready()) introGl.shutdown();
+      introGl.init([](const char* n) -> void* { return reinterpret_cast<void*>(glfwGetProcAddress(n)); }, black, &e);
+      if (!introGl.ready()) std::fprintf(stderr, "Cinematic intro unavailable (%s); using the simple one.\n", e.c_str());
+      introGlBlack = black;
+      intro.setGlMode(introGl.ready());
+    };
     wezt::ui::IntroPlayer introSound;
     auto startIntro = [&] {
       const wezt::Prefs now = wezt::loadPrefs();   // re-read: a replay picks up a sound or logo style chosen meanwhile
-      loadLogo(now.introLogoBlack);
-      intro.setTextures(asTexture(goldTex), asTexture(whiteTex), texAspect, now.introLogoBlack);
+      prepareGl(now.introLogoBlack);
+      if (!introGl.ready()) loadLogo(now.introLogoBlack);
+      if (!introGl.ready()) intro.setTextures(asTexture(goldTex), asTexture(whiteTex), texAspect, now.introLogoBlack);
       std::string m;
       introSound.start(now.introSoundPath, &m);
       intro.begin();
@@ -114,6 +138,7 @@ int main(int argc, char** argv) {
       glViewport(0, 0, w, h);
       glClearColor(0.09f, 0.10f, 0.12f, 1.f);
       glClear(GL_COLOR_BUFFER_BIT);
+      if (intro.running() && introGl.ready()) introGl.render(intro.time(), w, h);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
       glfwSwapBuffers(window);
     }

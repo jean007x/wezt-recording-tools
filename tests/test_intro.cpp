@@ -2,13 +2,16 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 #include "io/audio_file.h"
 #include "io/wav.h"
 #include "ui/intro_sound.h"
 #include "ui/logo.h"
+#include "ui/logo_sdf.h"
 #include "util/prefs.h"
 
 using namespace wezt;
@@ -155,11 +158,30 @@ static void testLogo() {
   CHECK(ok);
 }
 
+static void testSdf() {
+  // the distance transform: one feature cell, distances are exact squared Euclidean
+  std::vector<float> f(9 * 7, 1e20f);
+  f[3 * 9 + 4] = 0.f;
+  ui::squaredDistanceTransform(f, 9, 7);
+  CHECK(f[3 * 9 + 4] == 0.f);
+  CHECK(std::fabs(f[3 * 9 + 7] - 9.f) < 1e-3f);
+  CHECK(std::fabs(f[0 * 9 + 0] - (16.f + 9.f)) < 1e-3f);
+  // the logo's field: negative inside, positive outside, and a corner far from the logo is well outside
+  const ui::LogoSdf s = ui::makeLogoSdf();
+  CHECK(s.w > 0 && s.h > 0 && s.d.size() == static_cast<std::size_t>(s.w) * s.h);
+  float lo = 1e9f, hi = -1e9f;
+  for (float v : s.d) { lo = std::min(lo, v); hi = std::max(hi, v); }
+  CHECK(lo < -0.005f && hi > 0.2f);
+  CHECK(s.d[0] > 0.1f);
+  CHECK(s.logoHalfY > 0.2f && s.logoHalfY < s.halfY);
+}
+
 int main() {
   testPrefs();
   testAudioFiles();
   testSound();
   testLogo();
+  testSdf();
   std::printf(failures ? "FAILED\n" : "intro tests passed\n");
   return failures;
 }

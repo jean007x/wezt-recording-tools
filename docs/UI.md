@@ -122,14 +122,18 @@ are all undo steps. One recording pass is one step (they share a merge key), so 
 
 ## Start-up intro and Settings
 
-When Wezt starts it plays a short opening. A black room; the logo (the project owner's logo, a solid slab with real thickness)
-grows from a speck while it spins in 3D, lands with a single hairline of light across the frame, sways slightly so the side walls
-show, holds with the name in small widely spaced type under it, then spins back down to a speck; that is when the studio opens, on
-a soft white wash. The look is deliberately restrained: machined metal (a flat face with a narrow lit chamfer along each edge,
-no puffy bevel), by default satin black with a fine gold inlay along every edge, or champagne gold; a slow band of light travels
-across the face, and a faint polished floor reflects it. The sound is synthesized in code (a rising drone and noise sweep, a sub boom on
-the landing, a falling whoosh, and four quick strikes of inharmonic "steel" partials with a scrape for the metal clash); it uses
-no recordings. Click or press any key to skip it.
+When Wezt starts it plays a short opening, in the manner of a studio logo. In a dark theatre the logo (the project owner's logo, a solid
+slab with real thickness and rounded edges) comes out of the distance spinning in 3D, lands with a flash and a travelling band of light,
+holds while the reflections slide across it, then spins back down to a point of light that flares as the studio opens. Everything is
+drawn live on the GPU by shaders (`src/ui/intro_gl.cpp`): the logo is ray-marched from its outline as a signed distance field, lit by a
+procedural photo studio (soft boxes, strip lights, a warm back light) so polished black lacquer with gold edges, or all-gold, reflects
+its surroundings; a polished black floor mirrors it; two spotlights cut through drifting haze with floating dust; then bloom,
+horizontal lens streaks, god rays, a little colour fringing, film grain and a 2.39:1 wide-screen frame. The sound is synthesized in code
+(a rising drone and noise sweep, a sub boom on the landing, a falling whoosh, and four quick strikes of inharmonic "steel" partials with
+a scrape for the metal clash); it uses no recordings. Click or press any key to skip it.
+
+It needs OpenGL 3.3 (the app asks for it, and falls back to a 3.0 context otherwise). If the graphics driver cannot run it, or a shader does
+not compile, Wezt uses the earlier plain 2D version of the intro instead (`src/ui/intro.cpp`) and prints why on the console.
 
 **File > Settings...** has:
 
@@ -145,7 +149,9 @@ Settings are kept in a small text file: `%APPDATA%\Wezt\settings.txt` (Windows),
 
 What is tested: the settings file, WAV and MP3 loading (a real MP3 is decoded and its pitch checked), the synthesized sound (energy
 build-up, impact, the clash at the opening, silent start and end), the logo picture, and the Settings window's save logic; the
-animation is rendered headless (`wezt_ui_snapshot out.ppm intro3.9`). **Not tested:** the animation and sound on a real screen and real
+animation of the 2D fallback is rendered headless (`wezt_ui_snapshot out.ppm intro3.9`), and the distance-field maths of the logo has a unit test. The GL intro was compiled and
+rendered frame by frame only through Mesa's *software* OpenGL (Linux, `wezt_intro_gl_snapshot out_prefix black 3.9 4.6`), so the picture is
+checked but its speed is not. **Not tested:** the GL intro on real GPUs, on Windows or macOS drivers, the animation and sound on a real screen and real
 speakers, and that the visuals and the sound line up on a given machine (the picture runs on the frame clock, the sound on the
 device clock).
 Playback goes through the system's default output; with no audio backend (e.g. Linux builds) the intro is silent.
