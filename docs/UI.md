@@ -128,9 +128,7 @@ holds while the reflections slide across it, then spins back down to a point of 
 drawn live on the GPU by shaders (`src/ui/intro_gl.cpp`): the logo is ray-marched from its outline as a signed distance field, lit by a
 procedural photo studio (soft boxes, strip lights, a warm back light) so polished black lacquer with gold edges, or all-gold, reflects
 its surroundings; a polished black floor mirrors it; two spotlights cut through drifting haze with floating dust; then bloom,
-horizontal lens streaks, god rays, a little colour fringing, film grain and a 2.39:1 wide-screen frame. The sound is synthesized in code
-(a rising drone and noise sweep, a sub boom on the landing, a falling whoosh, and four quick strikes of inharmonic "steel" partials with
-a scrape for the metal clash); it uses no recordings. Click or press any key to skip it.
+horizontal lens streaks, god rays, a little colour fringing, film grain and a 2.39:1 wide-screen frame. The sound is synthesized in code and follows the picture: a swelling drone with low pulses that speed up, a rush of air that sweeps across the speakers on every half turn of the logo, a glassy sweep each time the band of light crosses it, a sub boom and a ringing steel bell on the landing, a falling whoosh, a shimmer that climbs as the logo shrinks to a point, and four quick strikes of inharmonic "steel" partials with a scrape for the metal clash; it uses no recordings. Click or press any key to skip it.
 
 It needs OpenGL 3.3 (the app asks for it, and falls back to a 3.0 context otherwise). If the graphics driver cannot run it, or a shader does
 not compile, Wezt uses the earlier plain 2D version of the intro instead (`src/ui/intro.cpp`) and prints why on the console.

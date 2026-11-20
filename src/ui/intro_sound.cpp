@@ -166,6 +166,98 @@ io::StereoClip renderIntroSound(unsigned rateIn) {
       R[i] += fr.run(rng.bip(), fc * 1.02, sr, 0.12f) * amp;
     }
   }
+  // ---- low pulses under the build: a thump about every 0.55 s from 0.9 s, each a little louder, like a heart that speeds up ----
+  {
+    double t0 = 0.9, gap = 0.62;
+    while (t0 < kIntroGrowEnd - 0.1) {
+      const float g = 0.10f + 0.34f * static_cast<float>(t0 / kIntroGrowEnd);
+      const std::size_t s0 = at(t0);
+      double ph = 0;
+      for (std::size_t i = s0; i < N && i < s0 + at(0.45); ++i) {
+        const double tt = static_cast<double>(i - s0) / sr;
+        ph += 2.0 * kPi * (46.0 + 40.0 * std::exp(-tt * 18.0)) / sr;
+        const float v = static_cast<float>(std::sin(ph)) * g * std::exp(-static_cast<float>(tt) * 9.f);
+        L[i] += v; R[i] += v;
+      }
+      t0 += gap; gap *= 0.93;
+    }
+  }
+  // ---- the spin: each half turn of the logo is a pass-by, a rush of air that sweeps across the speakers (as fast as the spin is) ----
+  {
+    double prev = 0; int half = 0;
+    for (double t = 0.0; t < kIntroGrowEnd; t += 0.001) {
+      const double u = t / kIntroGrowEnd, yaw = 3.0 * 2.0 * kPi * (1.0 - std::pow(1.0 - u, 2.2));
+      const double turns = yaw / kPi;
+      if (static_cast<int>(turns) > half) {
+        half = static_cast<int>(turns);
+        const double rate = (yaw - prev) / 0.001; prev = yaw;
+        const double dur = std::clamp(2.0 * kPi / std::max(rate, 1.0) * 0.9, 0.12, 0.7);   // faster spin = shorter, sharper
+        const float amp = 0.10f + 0.30f * static_cast<float>(std::pow(u, 1.2));
+        const bool toRight = (half & 1) != 0;
+        const std::size_t s0 = at(t - dur * 0.5), len = at(dur * 1.4);
+        Svf f1; OnePole lp;
+        for (std::size_t i = s0; i < s0 + len && i < N; ++i) {
+          const double v = static_cast<double>(i - s0) / static_cast<double>(len);
+          const float env = static_cast<float>(std::sin(kPi * v));
+          const float pos = toRight ? static_cast<float>(v) : 1.f - static_cast<float>(v);
+          const double fc = 500.0 + 3800.0 * std::sin(kPi * v) * (0.5 + u);
+          const float n = f1.run(rng.bip(), fc, sr, 0.25f) * env * env * amp;
+          L[i] += n * std::cos(pos * 1.5708f); R[i] += n * std::sin(pos * 1.5708f);
+        }
+      } else prev = yaw;
+    }
+  }
+  // ---- the moving light: a bright glassy sweep each time the band of light crosses the logo (2.7-3.7 s and 3.9-4.8 s), left to right ----
+  {
+    const double sweeps[2][2] = {{2.7, 3.7}, {3.9, 4.8}};
+    for (int k = 0; k < 2; ++k) {
+      const double a = sweeps[k][0], b = sweeps[k][1];
+      const std::size_t s0 = at(a), len = at(b - a);
+      double ph[5] = {0, 0, 0, 0, 0}; const double mul[5] = {1, 2.01, 3.02, 4.97, 6.1};
+      Svf f1; const float gain = k == 0 ? 0.11f : 0.17f;
+      for (std::size_t i = s0; i < s0 + len && i < N; ++i) {
+        const double v = static_cast<double>(i - s0) / static_cast<double>(len);
+        const float env = static_cast<float>(std::sin(kPi * v)); const float e2 = env * env;
+        const double f0 = 700.0 * std::pow(3.2, v);
+        float tone = 0;
+        for (int m = 0; m < 5; ++m) { ph[m] += 2.0 * kPi * f0 * mul[m] / sr; tone += static_cast<float>(std::sin(ph[m])) / (1.f + static_cast<float>(m)); }
+        const float air = f1.run(rng.bip(), 6000.0 + 4000.0 * v, sr, 0.3f) * 0.6f;
+        const float x = (tone * 0.35f + air) * e2 * gain;
+        L[i] += x * static_cast<float>(1.0 - v * 0.7); R[i] += x * static_cast<float>(0.3 + v * 0.7);
+      }
+    }
+  }
+  // ---- the landing's ring: a struck bell of steel partials over the boom, ringing out for a couple of seconds ----
+  {
+    static const double ratio[9] = {1, 2.76, 5.40, 8.93, 1.59, 3.50, 6.7, 2.14, 4.2};
+    const std::size_t s0 = at(kIntroGrowEnd);
+    for (int k = 0; k < 9; ++k) {
+      const double f = 520.0 * ratio[k], tau = 2.4 / (1.0 + 0.35 * k);
+      const float a = 0.16f / (1.f + 0.4f * static_cast<float>(k)), pan = 0.2f + 0.6f * rng.uni();
+      double ph = 0;
+      for (std::size_t i = s0; i < N; ++i) {
+        const double tt = static_cast<double>(i - s0) / sr;
+        if (tt > 5.0) break;
+        ph += 2.0 * kPi * f / sr;
+        const float v = static_cast<float>(std::sin(ph)) * a * static_cast<float>(std::exp(-tt / tau));
+        L[i] += v * (1.f - pan); R[i] += v * pan;
+      }
+    }
+  }
+  // ---- the last rise: as the logo shrinks to a point of light, a tight shimmer climbs and is cut off by the clash ----
+  {
+    const double a = 5.2, b = kIntroOpen;
+    const std::size_t s0 = at(a), s1 = at(b);
+    double ph[4] = {0, 0, 0, 0}; const double mul[4] = {1, 1.5, 2.0, 3.0};
+    for (std::size_t i = s0; i < s1 && i < N; ++i) {
+      const double v = static_cast<double>(i - s0) / static_cast<double>(s1 - s0);
+      const double f0 = 600.0 * std::pow(8.0, v);
+      float x = 0; for (int m = 0; m < 4; ++m) { ph[m] += 2.0 * kPi * f0 * mul[m] / sr; x += static_cast<float>(std::sin(ph[m])); }
+      const float cut = 1.f - smooth(0.99f, 1.f, static_cast<float>(v));
+      const float v2 = x * 0.25f * 0.16f * static_cast<float>(v * v) * cut;
+      L[i] += v2; R[i] += v2;
+    }
+  }
   // ---- a hall: four damped combs and two all-passes per side, mixed in under the dry sound ----
   {
     const double dl[4] = {0.0297, 0.0371, 0.0411, 0.0437}, dr[4] = {0.0311, 0.0389, 0.0427, 0.0463};
