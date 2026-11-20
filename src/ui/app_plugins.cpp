@@ -31,6 +31,12 @@ void App::drawPluginParamsWindow() {
     ImGui::EndCombo();
   }
   auto& slot = tr->inserts[static_cast<std::size_t>(ppInsert_)];
+  for (const auto& f : session_->pluginFaults()) {   // muted because it produced invalid audio: say so and let the user try it again
+    if (f.track != ppTrack_ || f.insert != static_cast<std::size_t>(ppInsert_) || !f.quarantined) continue;
+    ImGui::TextColored(ImVec4(1.f, 0.55f, 0.25f, 1.f), "Muted: this plugin produced invalid audio (NaN/inf) and was switched off to protect the speakers.");
+    if (ImGui::Button("Re-enable this plugin")) { session_->reenablePlugin(ppTrack_, f.insert); setStatus("Re-enabled " + f.name + ". It is muted again if it keeps producing invalid audio."); }
+    ImGui::Separator();
+  }
   if (!slot.instance) { ImGui::TextDisabled("This plugin is not available (offline), so its parameters cannot be shown."); ImGui::End(); return; }
   const bool canAuto = slot.instance->supportsAutomation();
   const bool playing = engine_->transport().playing();

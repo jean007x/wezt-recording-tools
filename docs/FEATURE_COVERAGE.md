@@ -8,7 +8,7 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 ## Engine safety
 - **Fault containment (built, tested):** NaN or infinity in any node's output (a misbehaving plug-in) is replaced by 0 before the
   next node sees it; a node that does it in 4 blocks in a row is muted until reset. The app names the muted plug-in in its status
-  line (`Session::pluginFaults`, `reenablePlugin`; tested in `test_session`). Not built: a button to re-enable from the UI, and catching a plug-in that crashes or hangs (that is what the 32-bit bridge's process separation is for;
+  line (`Session::pluginFaults`, `reenablePlugin`; tested in `test_session`). The Plugin Parameters window shows a "Re-enable this plugin" button for a muted plugin (compiled, not clicked on a real screen). Not built: catching a plug-in that crashes or hangs (that is what the 32-bit bridge's process separation is for;
   the 64-bit hosts run plug-ins in-process).
 
 - **Plug-in latency changes (built, tested):** a VST3 plug-in's restartComponent(kLatencyChanged) and a CLAP plug-in's host latency
