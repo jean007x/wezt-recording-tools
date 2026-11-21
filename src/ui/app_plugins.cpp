@@ -117,7 +117,7 @@ void App::drawPluginParamsWindow() {
     ImGui::Separator();
   }
 #if defined(WEZT_HAS_BRIDGE)
-  if (auto* br = dynamic_cast<plugins::BridgedPluginInstance*>(slot.instance.get())) {   // a plug-in in safe mode: say how its process is doing
+  if (auto* br = dynamic_cast<plugins::BridgedPluginInstance*>(slot.instance)) {   // a plug-in in safe mode: say how its process is doing
     if (br->crashed()) ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "Safe mode: this plug-in's process stopped, so the insert is silent (%u blocks replaced). Remove it and add it again to restart it.", br->droppedBlocks());
     else if (!br->ready() && !br->lastError().empty()) ImGui::TextColored(ImVec4(1.f, 0.55f, 0.25f, 1.f), "Safe mode: %s", br->lastError().c_str());
     else ImGui::TextDisabled("Safe mode: running in its own process");
