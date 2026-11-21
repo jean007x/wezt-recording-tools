@@ -526,10 +526,10 @@ void App::drawEdit() {
         if (sBtn("wave", showWaves_, 0xFF8A8C92, 36)) showWaves_ = !showWaves_;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show waveforms or plain blocks");
         ImGui::SameLine(0, 2);
-        if (sBtn(!showVolAuto_ ? "auto" : autoLane_ == 0 ? "vol" : "pan", showVolAuto_, 0xFF3FA84A, 34)) {   // off -> volume -> pan -> off
-          if (!showVolAuto_) { showVolAuto_ = true; autoLane_ = 0; } else if (autoLane_ == 0) autoLane_ = 1; else showVolAuto_ = false;
+        if (sBtn(!showVolAuto_ ? "auto" : autoLane_ == 0 ? "vol" : autoLane_ == 1 ? "pan" : "mute", showVolAuto_, 0xFF3FA84A, 34)) {   // off -> volume -> pan -> off
+          if (!showVolAuto_) { showVolAuto_ = true; autoLane_ = 0; } else if (autoLane_ < 2) ++autoLane_; else showVolAuto_ = false;
         }
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Automation on the timeline (click: volume, again: pan, again: off). Click a lane to add a point, drag to move it, right-click to delete (while stopped)");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Automation on the timeline (click: volume, again: pan, again: mute, again: off). Click a lane to add a point, drag to move it, right-click to delete (while stopped)");
         ImGui::SameLine(0, 2);
         const bool au = t->strip->automationOn();
         if (sBtn(au ? "read" : "off", au, 0xFF3FA84A, 40)) t->strip->setAutomationOn(!au);
@@ -650,13 +650,13 @@ void App::drawEdit() {
     }
     if (showVolAuto_) {   // the track's volume lane, drawn over its clips; editable while the song is stopped
       const int which = autoLane_;
-      session::AutomationLane& vl = which == 0 ? t->strip->volumeLane() : t->strip->panLane();
-      const float dbLo = which == 0 ? -60.f : -1.f, dbHi = which == 0 ? 12.f : 1.f, top = a.y + 6.f, bot = b.y - 6.f;
+      session::AutomationLane& vl = which == 0 ? t->strip->volumeLane() : which == 1 ? t->strip->panLane() : t->strip->muteLane();
+      const float dbLo = which == 0 ? -60.f : which == 1 ? -1.f : 0.f, dbHi = which == 0 ? 12.f : 1.f, top = a.y + 6.f, bot = b.y - 6.f;
       auto Y = [&](float db) { return bot - (std::clamp(db, dbLo, dbHi) - dbLo) / (dbHi - dbLo) * (bot - top); };
       auto dbAt = [&](float yy) { return std::clamp(dbLo + (bot - yy) / (bot - top) * (dbHi - dbLo), dbLo, dbHi); };
       dl->AddRectFilled(a, b, col(0.f, 0.f, 0.f, 0.35f));
       dl->AddLine(ImVec2(a.x, Y(0.f)), ImVec2(b.x, Y(0.f)), col(1.f, 1.f, 1.f, 0.12f));
-      const char* what = which == 0 ? "volume" : "pan";
+      const char* what = which == 0 ? "volume" : which == 1 ? "pan" : "mute";
       const bool stopped = !engine_->transport().playing();
       std::vector<session::AutomationPoint> pts = vl.points();
       const bool over = ImGui::IsWindowHovered() && mouse.x >= a.x && mouse.x < b.x && mouse.y >= a.y && mouse.y < b.y && stopped;
@@ -687,11 +687,14 @@ void App::drawEdit() {
       if (!now.empty()) {
         std::vector<ImVec2> pl;
         pl.push_back(ImVec2(a.x, Y(now.front().value)));
-        for (const auto& pt : now) pl.push_back(ImVec2(frameToX(pt.frame), Y(pt.value)));
+        for (const auto& pt : now) {
+          if (which == 2) pl.push_back(ImVec2(frameToX(pt.frame), pl.back().y));   // mute is on/off: a step, not a slope
+          pl.push_back(ImVec2(frameToX(pt.frame), Y(pt.value)));
+        }
         pl.push_back(ImVec2(b.x, Y(now.back().value)));
         dl->AddPolyline(pl.data(), static_cast<int>(pl.size()), col(0.35f, 0.9f, 0.5f), 0, 2.f);
         for (const auto& pt : now) dl->AddCircleFilled(ImVec2(frameToX(pt.frame), Y(pt.value)), 3.5f, col(0.7f, 1.f, 0.78f));
-      } else dl->AddText(ImVec2(a.x + 8.f, a.y + 4.f), col(0.8f, 0.8f, 0.85f, 0.7f), stopped ? (which == 0 ? "Click to draw volume automation" : "Click to draw pan automation (up = right)") : "Stop the song to edit automation");
+      } else dl->AddText(ImVec2(a.x + 8.f, a.y + 4.f), col(0.8f, 0.8f, 0.85f, 0.7f), stopped ? (which == 0 ? "Click to draw volume automation" : which == 1 ? "Click to draw pan automation (up = right)" : "Click to draw mute automation (top = muted, bottom = playing)") : "Stop the song to edit automation");
     }
     dl->PopClipRect();
     y += laneH;
