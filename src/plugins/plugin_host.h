@@ -60,6 +60,14 @@ struct IPluginInstance : Processor {
   // caller then runs Session::applyPluginLatency() while the audio is stopped.
   virtual bool takeLatencyChanged() { return false; }
   virtual bool acceptsMidi() const { return false; }
+
+  // ---- the plug-in's own window (control thread only) ----
+  // openEditor puts the plug-in's editor inside a native parent window (HWND on Windows, NSView on macOS) that the caller made, and reports
+  // the size it wants. closeEditor takes it out again (the destructor does too). editorResized is true when the plug-in asked for another size.
+  virtual bool editorSupported() const { return false; }
+  virtual bool openEditor(void* nativeParent, int* width, int* height, std::string* error) { (void)nativeParent; (void)width; (void)height; if (error) *error = "this plug-in has no window"; return false; }
+  virtual void closeEditor() {}
+  virtual bool editorResized(int* width, int* height) { (void)width; (void)height; return false; }
   virtual void handleMidi(const MidiEvent* events, std::size_t count) { (void)events; (void)count; }
 
   // ---- universal control surface (control thread; the defaults mean "nothing to control") ----

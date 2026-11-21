@@ -4,9 +4,11 @@
 #include <array>
 #include <mutex>
 #include <cstring>
+#include <functional>
 
 #include "base/source/fobject.h"
 #include "pluginterfaces/base/ipluginbase.h"
+#include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
@@ -101,11 +103,11 @@ std::vector<Vst3ClassInfo> describeVst3(const std::string& modulePath, std::stri
 }
 
 // The host side of the controller's conversation: the plug-in tells us when its latency or parameter list changed.
-// Edits a plug-in makes on its own (performEdit) are accepted and ignored: this host has no plug-in windows to originate them.
+// Edits a plug-in makes in its own window (performEdit) are queued for the audio thread.
 class ComponentHandler : public FObject, public Vst::IComponentHandler {
  public:
   tresult PLUGIN_API beginEdit(Vst::ParamID) override { return kResultOk; }
-  tresult PLUGIN_API performEdit(Vst::ParamID, Vst::ParamValue) override { return kResultOk; }
+  tresult PLUGIN_API performEdit(Vst::ParamID id, Vst::ParamValue v) override { if (forward) forward(id, v); return kResultOk; }   // the plug-in's own window moved a control: pass it to the audio side
   tresult PLUGIN_API endEdit(Vst::ParamID) override { return kResultOk; }
   tresult PLUGIN_API restartComponent(int32 flags) override {
     if (flags & Vst::kLatencyChanged) latencyChanged.store(true, std::memory_order_release);
@@ -113,11 +115,31 @@ class ComponentHandler : public FObject, public Vst::IComponentHandler {
     return kResultOk;
   }
   std::atomic<bool> latencyChanged{false}, reloadRequested{false};
+  std::function<void(Vst::ParamID, double)> forward;
   OBJ_METHODS(ComponentHandler, FObject)
   DEFINE_INTERFACES
     DEF_INTERFACE(Vst::IComponentHandler)
   END_DEFINE_INTERFACES(FObject)
   REFCOUNT_METHODS(FObject)
+};
+
+// The host's side of a plug-in window: the plug-in asks for another size through resizeView; the app reads it and resizes the OS window.
+class EditorFrame : public IPlugFrame {
+ public:
+  tresult PLUGIN_API resizeView(IPlugView* view, ViewRect* r) override {
+    if (!r) return kInvalidArgument;
+    w.store(r->getWidth()); h.store(r->getHeight()); changed.store(true);
+    if (view) view->onSize(r);
+    return kResultTrue;
+  }
+  tresult PLUGIN_API queryInterface(const TUID iid, void** obj) override {
+    if (FUnknownPrivate::iidEqual(iid, IPlugFrame::iid) || FUnknownPrivate::iidEqual(iid, FUnknown::iid)) { *obj = static_cast<IPlugFrame*>(this); return kResultOk; }
+    *obj = nullptr; return kNoInterface;
+  }
+  uint32 PLUGIN_API addRef() override { return 1; }     // owned by the instance, never freed through the plug-in
+  uint32 PLUGIN_API release() override { return 1; }
+  std::atomic<int> w{0}, h{0};
+  std::atomic<bool> changed{false};
 };
 
 struct Vst3Instance::Impl {
@@ -148,6 +170,8 @@ struct Vst3Instance::Impl {
   std::array<std::uint16_t, 128> held{};  // per key: bit per channel that has a note on, so AllNotesOff can release exactly those
   FUnknownPtr<Vst::IMidiMapping> midiMap;
   IPtr<ComponentHandler> handler;
+  IPtr<IPlugView> view;     // the open editor, if any
+  EditorFrame frame;
 
   void deactivate() {
     if (!active) return;
@@ -161,6 +185,7 @@ struct Vst3Instance::Impl {
 Vst3Instance::Vst3Instance() : impl_(std::make_unique<Impl>()) {}
 
 Vst3Instance::~Vst3Instance() {
+  closeEditor();
   if (impl_) {
     impl_->deactivate();
     if (impl_->controller) impl_->controller->setComponentHandler(nullptr);
@@ -212,6 +237,7 @@ std::unique_ptr<Vst3Instance> Vst3Instance::load(const std::string& modulePath, 
   if (d.controller) {
     d.midiMap = FUnknownPtr<Vst::IMidiMapping>(d.controller);
     d.handler = owned(new ComponentHandler());
+    d.handler->forward = [&d](Vst::ParamID id, double v) { d.ring.push({id, std::clamp(v, 0.0, 1.0)}); };
     d.controller->setComponentHandler(d.handler);
   }
   return inst;
@@ -392,6 +418,51 @@ std::string Vst3Instance::parameterText(unsigned id, double normalized) const {
   Vst::String128 text = {0};
   if (impl_->controller->getParamStringByValue(id, std::clamp(normalized, 0.0, 1.0), text) != kResultOk) return {};
   return narrow(text);
+}
+
+bool Vst3Instance::editorSupported() const { return impl_ && impl_->controller != nullptr; }
+
+bool Vst3Instance::openEditor(void* parent, int* width, int* height, std::string* error) {
+  auto fail = [&](const std::string& m) { if (error) *error = m; return false; };
+  Impl& d = *impl_;
+#if defined(_WIN32)
+  const FIDString type = kPlatformTypeHWND;
+#elif defined(__APPLE__)
+  const FIDString type = kPlatformTypeNSView;
+#else
+  (void)parent; (void)width; (void)height;
+  return fail("plug-in windows are not supported on Linux yet");
+#endif
+#if defined(_WIN32) || defined(__APPLE__)
+  if (!d.controller) return fail("the plug-in has no controller");
+  if (d.view) return true;
+  IPtr<IPlugView> v = owned(d.controller->createView(Vst::ViewType::kEditor));
+  if (!v) return fail("the plug-in has no editor");
+  if (v->isPlatformTypeSupported(type) != kResultTrue) return fail("the plug-in's editor does not support this system's window type");
+  v->setFrame(&d.frame);
+  ViewRect r{};
+  if (v->getSize(&r) != kResultOk) r = ViewRect(0, 0, 640, 480);
+  if (v->attached(parent, type) != kResultOk) { v->setFrame(nullptr); return fail("the plug-in could not open its window"); }
+  d.view = v;
+  d.frame.changed.store(false);
+  if (width) *width = std::max(1, r.getWidth());
+  if (height) *height = std::max(1, r.getHeight());
+  return true;
+#endif
+}
+
+void Vst3Instance::closeEditor() {
+  if (!impl_ || !impl_->view) return;
+  impl_->view->removed();
+  impl_->view->setFrame(nullptr);
+  impl_->view = nullptr;
+}
+
+bool Vst3Instance::editorResized(int* width, int* height) {
+  if (!impl_ || !impl_->frame.changed.exchange(false)) return false;
+  if (width) *width = impl_->frame.w.load();
+  if (height) *height = impl_->frame.h.load();
+  return true;
 }
 
 double Vst3Instance::parameterNormalized(unsigned id) const {

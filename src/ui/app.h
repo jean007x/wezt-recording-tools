@@ -55,6 +55,16 @@ struct Marker { std::int64_t frame = 0; std::string name; };
 // A track group: while it is active, mute / solo / record-arm / fader moves on one member apply to all.
 struct TrackGroup { char letter = 'a'; std::string name; std::vector<session::TrackId> members; bool active = true; };
 
+// What the program around the app provides so a plug-in can have its own window: the app asks for a native window (it never touches the windowing
+// system itself), puts the plug-in's editor inside it, and asks about it each frame.
+struct EditorHost {
+  virtual ~EditorHost() = default;
+  virtual int open(const std::string& title, int width, int height, void** nativeParent) = 0;   // returns a window id (>= 0), or -1
+  virtual void resize(int id, int width, int height) = 0;
+  virtual bool wasClosed(int id) = 0;     // the user closed it
+  virtual void close(int id) = 0;
+};
+
 class App {
  public:
   App();
@@ -136,6 +146,9 @@ class App {
   void showClips(bool on) { showClips_ = on; }
   void showVoiceBank(bool on) { showVoiceBank_ = on; }
   void showPluginParams(bool on) { showPlugParams_ = on; }
+  void setEditorHost(EditorHost* h) { editorHost_ = h; }
+  void openPluginEditor(int track, int insert) { openEditorWindow(track, insert); }
+  std::size_t openEditorCount() const { return editors_.size(); }
   void selectPluginParam(int track, int insert, int param) { ppTrack_ = track; ppInsert_ = insert; ppParam_ = param; }
   void showPianoRoll(bool on) { showPianoRoll_ = on; }
   void showScore(bool on) { showScore_ = on; }
@@ -220,6 +233,8 @@ class App {
   void drawVoiceBankWindow();
   void drawPluginParamsWindow();
   void drawPluginBrowser();
+  void openEditorWindow(int track, int insert);
+  void serviceEditors();   // each frame: resize, and close what the user closed or what no longer exists
   std::string voiceDir() const;
   void drawScoreWindow();
   void watchEdits();
@@ -312,6 +327,9 @@ class App {
   // piano roll view and drag state
   float rollPxPerBeat_ = 64.f, rollRowH_ = 14.f, rollScrollBeat_ = 0.f; int rollTopPitch_ = 96, rollGridIdx_ = 2; bool rollDraw_ = true;
   int rollDrag_ = 0; double rollDragBeat_ = 0; int rollDragPitch_ = 0; edit::PianoRoll rollStart_; float rollBandX_ = 0, rollBandY_ = 0;
+  struct OpenEditor { int window; plugins::IPluginInstance* instance; std::string title; };
+  std::vector<OpenEditor> editors_;
+  EditorHost* editorHost_ = nullptr;
   bool showPluginBrowser_ = false, pbScanned_ = false, pbSafe_ = false;   // the plug-in browser window
   std::vector<plugins::LibraryEntry> pbEntries_;
   std::string pbFilter_, pbMessage_;

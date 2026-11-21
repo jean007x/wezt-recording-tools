@@ -556,6 +556,7 @@ void App::frame() {
   if (showVoiceBank_) drawVoiceBankWindow();
   if (showPlugParams_) drawPluginParamsWindow();
   if (showPluginBrowser_) drawPluginBrowser();
+  serviceEditors();
   if (showPianoRoll_) drawPianoRollWindow();
   if (showScore_) drawScoreWindow();
   if (showAssistant_) drawAssistantWindow();

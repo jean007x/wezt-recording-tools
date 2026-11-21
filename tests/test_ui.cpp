@@ -40,6 +40,29 @@ static void press(App& app, ImGuiKey key, bool ctrl = false, bool shift = false,
   frames(app, 1);
 }
 
+namespace {
+// A stand-in for the plug-in window machinery: records what the app asks of it.
+struct FakeEditorHost : EditorHost {
+  int nextId = 0, opened = 0, closedCalls = 0, lastW = 0, lastH = 0; bool userClosed = false; int tag = 0;
+  int open(const std::string&, int, int, void** parent) override { *parent = &tag; ++opened; return nextId++; }
+  void resize(int, int w, int h) override { lastW = w; lastH = h; }
+  bool wasClosed(int) override { return userClosed; }
+  void close(int) override { ++closedCalls; }
+};
+// A plug-in with a window: it wants 300x200, then asks for 400x250.
+struct WindowedPlugin : plugins::IPluginInstance {
+  bool open = false, resizePending = false; int closes = 0;
+  void process(const AudioBuffer&, AudioBuffer&) override {}
+  std::size_t parameterCount() const override { return 0; }
+  std::vector<std::uint8_t> saveState() const override { return {}; }
+  bool loadState(const std::vector<std::uint8_t>&) override { return true; }
+  bool editorSupported() const override { return true; }
+  bool openEditor(void* parent, int* w, int* h, std::string*) override { if (!parent) return false; open = true; *w = 300; *h = 200; return true; }
+  void closeEditor() override { if (open) ++closes; open = false; }
+  bool editorResized(int* w, int* h) override { if (!resizePending) return false; resizePending = false; *w = 400; *h = 250; return true; }
+};
+}  // namespace
+
 int main() {
   const std::filesystem::path cfg = std::filesystem::temp_directory_path() / "wezt_ui_test_config";
   std::filesystem::remove_all(cfg);
@@ -396,6 +419,32 @@ int main() {
     CHECK(app.analyzeMix(&msg) && msg.find("LUFS") != std::string::npos);
     std::printf("%s\n", msg.c_str());
     CHECK(!app.exportAdm("/no/such/dir/x.wav", &msg) && !msg.empty());
+  }
+  {  // a plug-in with its own window: opened through the host, resized when it asks, closed when the user closes it or the insert goes away
+    App app;
+    FakeEditorHost host;
+    app.setEditorHost(&host);
+    auto& s = app.session();
+    frames(app);
+    const auto t = app.selectedTrack();
+    auto plugin = std::make_unique<WindowedPlugin>();
+    WindowedPlugin* wp = plugin.get();
+    plugins::PluginDescriptor d; d.name = "Windowed"; d.format = plugins::Format::Builtin;
+    CHECK(s.addInsert(t, std::move(plugin), d));
+    app.openPluginEditor(t, 0);
+    CHECK(host.opened == 1 && wp->open && app.openEditorCount() == 1 && host.lastW == 300 && host.lastH == 200);
+    app.openPluginEditor(t, 0);                       // already open: no second window
+    CHECK(host.opened == 1 && app.openEditorCount() == 1);
+    wp->resizePending = true; frames(app);
+    CHECK(host.lastW == 400 && host.lastH == 250);
+    host.userClosed = true; frames(app);
+    CHECK(app.openEditorCount() == 0 && host.closedCalls == 1 && wp->closes == 1 && !wp->open);
+    host.userClosed = false;
+    app.openPluginEditor(t, 0);                       // and again, then the insert is removed while its window is open
+    CHECK(app.openEditorCount() == 1);
+    CHECK(s.removeInsert(t, 0));
+    frames(app);
+    CHECK(app.openEditorCount() == 0 && host.closedCalls == 2);
   }
   {  // drawing plug-in automation with the mouse in the Plugin Parameters graph: click adds a point, undo removes it
     App app;

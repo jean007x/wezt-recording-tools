@@ -7,6 +7,16 @@
 #include <memory>
 
 #include <GLFW/glfw3.h>
+#if defined(_WIN32)
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#elif defined(__APPLE__)
+#define GLFW_EXPOSE_NATIVE_COCOA
+#include <GLFW/glfw3native.h>
+#include <objc/message.h>
+#include <objc/runtime.h>
+#endif
+#include <vector>
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
@@ -22,6 +32,38 @@
 #endif
 
 namespace {
+// Plug-in windows: a plain GLFW window with no OpenGL context, whose native handle the plug-in draws into (Windows and macOS).
+class GlfwEditorHost : public wezt::ui::EditorHost {
+ public:
+  ~GlfwEditorHost() override { for (auto*& w : windows_) if (w) { glfwDestroyWindow(w); w = nullptr; } }
+  int open(const std::string& title, int width, int height, void** nativeParent) override {
+#if defined(_WIN32) || defined(__APPLE__)
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    GLFWwindow* w = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+    if (!w) return -1;
+#if defined(_WIN32)
+    *nativeParent = glfwGetWin32Window(w);
+#else
+    id win = glfwGetCocoaWindow(w);
+    *nativeParent = win ? reinterpret_cast<void*>(reinterpret_cast<id (*)(id, SEL)>(objc_msgSend)(win, sel_registerName("contentView"))) : nullptr;
+#endif
+    windows_.push_back(w);
+    return static_cast<int>(windows_.size()) - 1;
+#else
+    (void)title; (void)width; (void)height; *nativeParent = nullptr;
+    return -1;   // plug-in windows are not supported on Linux yet
+#endif
+  }
+  void resize(int id, int width, int height) override { if (valid(id)) glfwSetWindowSize(windows_[static_cast<std::size_t>(id)], width, height); }
+  bool wasClosed(int id) override { return valid(id) && glfwWindowShouldClose(windows_[static_cast<std::size_t>(id)]); }
+  void close(int id) override { if (valid(id)) { glfwDestroyWindow(windows_[static_cast<std::size_t>(id)]); windows_[static_cast<std::size_t>(id)] = nullptr; } }
+
+ private:
+  bool valid(int id) const { return id >= 0 && static_cast<std::size_t>(id) < windows_.size() && windows_[static_cast<std::size_t>(id)]; }
+  std::vector<GLFWwindow*> windows_;
+};
+
 // Uploads a picture with its whole mip chain (only OpenGL 1.1 calls, so it works with the stock Windows headers too).
 GLuint uploadTexture(const wezt::ui::LogoImage& base) {
   GLuint id = 0;
@@ -113,9 +155,11 @@ int main(int argc, char** argv) {
     };
     if (prefs.introEnabled) startIntro();
 
+    GlfwEditorHost editorHost;   // declared before the app so it outlives it: plug-ins take their windows down while the app is destroyed
     std::unique_ptr<wezt::ui::App> appPtr;
     auto openStudio = [&] {
       appPtr = std::make_unique<wezt::ui::App>();
+      appPtr->setEditorHost(&editorHost);
       std::string msg;
       appPtr->startAudio(&msg);
       appPtr->setStatus(msg);

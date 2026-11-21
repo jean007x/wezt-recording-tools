@@ -16,6 +16,42 @@
 
 namespace wezt::ui {
 
+void App::openEditorWindow(int trackId, int insertIdx) {
+  session::Track* tr = session_->track(trackId);
+  if (!tr || insertIdx < 0 || insertIdx >= static_cast<int>(tr->inserts.size())) return;
+  plugins::IPluginInstance* inst = tr->inserts[static_cast<std::size_t>(insertIdx)].instance;
+  if (!inst || !inst->editorSupported()) { setStatus("This plug-in has no window of its own"); return; }
+  if (!editorHost_) { setStatus("Plug-in windows are not available in this build"); return; }
+  for (const auto& e : editors_) if (e.instance == inst) { setStatus("Its window is already open"); return; }
+  const std::string title = tr->inserts[static_cast<std::size_t>(insertIdx)].descriptor.name + " - " + tr->name;
+  void* parent = nullptr;
+  const int win = editorHost_->open(title, 640, 480, &parent);
+  if (win < 0 || !parent) { setStatus("Could not make a window for the plug-in"); if (win >= 0) editorHost_->close(win); return; }
+  int w = 640, h = 480; std::string err;
+  if (!inst->openEditor(parent, &w, &h, &err)) { editorHost_->close(win); setStatus("Could not open the plug-in's window: " + err); return; }
+  editorHost_->resize(win, w, h);
+  editors_.push_back({win, inst, title});
+}
+
+// Each frame: follow a plug-in's request for another size; close the window when the user did, or when the insert is gone
+// (the plug-in already took its view down when it was destroyed, so only the window is left to close).
+void App::serviceEditors() {
+  if (!editorHost_) { editors_.clear(); return; }
+  for (auto it = editors_.begin(); it != editors_.end();) {
+    bool alive = false;
+    for (session::TrackId id : session_->trackIds()) {
+      const session::Track* tr = session_->track(id);
+      if (tr) for (const auto& in : tr->inserts) if (in.instance == it->instance) alive = true;
+    }
+    if (alive) {
+      int w = 0, h = 0;
+      if (it->instance->editorResized(&w, &h)) editorHost_->resize(it->window, w, h);
+      if (editorHost_->wasClosed(it->window)) { it->instance->closeEditor(); editorHost_->close(it->window); it = editors_.erase(it); continue; }
+    } else { editorHost_->close(it->window); it = editors_.erase(it); continue; }
+    ++it;
+  }
+}
+
 // The plug-in browser: finds VST3 and CLAP plug-ins on this computer (reading folders and file headers only; nothing is run until you add one),
 // says plainly which ones this build can host, and puts a chosen one on the selected track as an insert.
 void App::drawPluginBrowser() {
@@ -123,6 +159,7 @@ void App::drawPluginParamsWindow() {
     else ImGui::TextDisabled("Safe mode: running in its own process");
   }
 #endif
+  if (slot.instance && slot.instance->editorSupported() && editorHost_ && ImGui::Button("Open plug-in window")) openEditorWindow(ppTrack_, ppInsert_);
   if (!slot.instance) { ImGui::TextDisabled("This plugin is not available (offline), so its parameters cannot be shown."); ImGui::End(); return; }
   const bool canAuto = slot.instance->supportsAutomation();
   const bool playing = engine_->transport().playing();

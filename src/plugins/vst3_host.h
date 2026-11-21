@@ -52,6 +52,10 @@ class Vst3Instance : public IPluginInstance {
   // as VST3 events; controllers and pitch bend go in through the plugin's IMidiMapping as
   // parameter changes at the same offsets. Events are applied in the next process() call.
   bool acceptsMidi() const override;
+  bool editorSupported() const override;
+  bool openEditor(void* nativeParent, int* width, int* height, std::string* error) override;
+  void closeEditor() override;
+  bool editorResized(int* width, int* height) override;
   void handleMidi(const MidiEvent* events, std::size_t count) override;
 
  private:
