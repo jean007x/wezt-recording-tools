@@ -30,7 +30,7 @@ struct Chord {
 enum class Command : std::uint16_t {
   // transport
   PlayStop, PlayHalfSpeed, Record, StopRecord, LoopPlayback, LoopRecord, ReturnToStart, GoToEnd,
-  Rewind, FastForward, QuickPunch, Pause, OnlinePlayback, Metronome, CountOff,
+  Rewind, FastForward, QuickPunch, Pause, OnlinePlayback, Metronome, CountOff, PreRoll,
   // edit modes and tools
   ModeShuffle, ModeSlip, ModeSpot, ModeGrid, ModeSnapToGrid, CycleEditModes,
   ToolZoomer, ToolTrimmer, ToolSelector, ToolGrabber, ToolScrubber, ToolPencil, ToolSmart, CycleEditTools,

@@ -239,6 +239,14 @@ void App::drawTransport() {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Count-off: bars of clicks before recording starts (click to change: off, 1, 2, 4)");
   }
 
+  ImGui::SameLine(0, 2);
+  {
+    const int ps = static_cast<int>(std::lround(static_cast<double>(engine_->preRollFrames()) / session_->sampleRate()));
+    const std::string lbl = ps == 0 ? "Pre" : "Pre " + std::to_string(ps) + "s";
+    if (st::chip((lbl + "##pre").c_str(), ps > 0 || engine_->preRolling(), blue, ImVec2(60, 26))) execute(Command::PreRoll);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pre-roll: when recording from the playhead, play in from a few seconds earlier (click to change: off, 2, 4, 8 s)");
+  }
+
   // ---- counters at the right
   const double rate = session_->sampleRate();
   const std::int64_t pos = position();

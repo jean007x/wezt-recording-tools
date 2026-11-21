@@ -33,6 +33,11 @@ class Engine : public audio::AudioCallback {
   // While counting, the playhead stays where it is and nothing plays but the click. cancelCountOff() stops that without starting.
   void startWithCountOff(bool record);
   void cancelCountOff() { countOffLeft_.store(0, std::memory_order_release); }
+  // Pre-roll: recording starts from the playhead, but the song rolls in from this many frames earlier (never before 0) so the player
+  // hears the lead-in. Recording switches on exactly at the playhead the start was requested at. 0 = off.
+  void setPreRollFrames(std::int64_t f) { preRoll_.store(f < 0 ? 0 : f, std::memory_order_relaxed); }
+  std::int64_t preRollFrames() const { return preRoll_.load(std::memory_order_relaxed); }
+  bool preRolling() const { return recordAt_.load(std::memory_order_acquire) >= 0; }
   bool countingOff() const { return countOffLeft_.load(std::memory_order_acquire) > 0; }
   // Processors (e.g. the mixer) keep this pointer and read it inside process().
   const RtContext* context() const { return &ctx_; }
@@ -56,6 +61,8 @@ class Engine : public audio::AudioCallback {
   Metronome metronome_;
   std::atomic<std::int64_t> countOffLeft_{0}, countOffTotal_{0};
   std::atomic<bool> countOffRecord_{false};
+  std::atomic<std::int64_t> preRoll_{0}, recordAt_{-1};
+  void beginRoll(bool record);
   RtContext ctx_;
   AudioBuffer block_;
   std::vector<float> zeros_;

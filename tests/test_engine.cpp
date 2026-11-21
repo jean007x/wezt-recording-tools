@@ -334,6 +334,48 @@ void testFaultContainment() {
 
 static double energy(const std::vector<float>& v, std::size_t a, std::size_t b) { double e = 0; for (std::size_t i = a; i < b && i < v.size(); ++i) e += static_cast<double>(v[i]) * v[i]; return e; }
 
+static void testPreRoll() {
+  {  // record from 3 s with a 1 s pre-roll: the song rolls in from 2 s, recording switches on exactly at 3 s
+    Rig r(128); CHECK(r.start(0, 2));
+    r.e->setPreRollFrames(48000);
+    r.e->transport().locate(144000);
+    runSizes(r, 2, std::vector<unsigned>(2, 128));
+    CHECK(r.e->transport().position() == 144000);
+    r.e->startWithCountOff(true);
+    runSizes(r, 2, std::vector<unsigned>(1, 128));
+    CHECK(r.e->transport().playing() && !r.e->transport().recording() && r.e->preRolling());
+    CHECK(r.e->transport().position() < 100000 + 128);                    // rolled in from 2 s, not from 3 s
+    runSizes(r, 2, std::vector<unsigned>(300, 128));                      // 38400 frames: still short of the punch-in
+    CHECK(!r.e->transport().recording());
+    std::int64_t rec = -1;
+    for (int i = 0; i < 200 && rec < 0; ++i) {
+      runSizes(r, 2, std::vector<unsigned>(1, 128));
+      if (r.e->transport().recording()) rec = r.e->transport().position();
+    }
+    CHECK(rec >= 144000 && rec <= 144000 + 128);                          // on from the record point
+    CHECK(!r.e->preRolling());
+  }
+  {  // from the start of the song there is nothing before it to play: it records at once
+    Rig r(128); CHECK(r.start(0, 2));
+    r.e->setPreRollFrames(48000);
+    r.e->startWithCountOff(true);
+    CHECK(r.e->transport().recording());
+  }
+  {  // stopping during the lead-in must not leave a trap: the next plain play does not record
+    Rig r(128); CHECK(r.start(0, 2));
+    r.e->setPreRollFrames(48000);
+    r.e->transport().locate(144000);
+    runSizes(r, 2, std::vector<unsigned>(2, 128));
+    r.e->startWithCountOff(true);
+    runSizes(r, 2, std::vector<unsigned>(10, 128));
+    r.e->transport().stop();
+    runSizes(r, 2, std::vector<unsigned>(2, 128));
+    r.e->transport().play();
+    runSizes(r, 2, std::vector<unsigned>(1500, 128));
+    CHECK(!r.e->transport().recording());
+  }
+}
+
 static void testMetronomeAndCountOff() {
   {  // a click on every beat while playing (120 bpm at 48 kHz = a beat every 24000 frames), louder on the bar's first beat
     Rig r(128); CHECK(r.start(0, 2));
@@ -390,6 +432,7 @@ static void testMetronomeAndCountOff() {
 
 int main() {
   testMetronomeAndCountOff();
+  testPreRoll();
   testFaultContainment();
   testNonFiniteOutput();
   testVariableCallbackSizes();

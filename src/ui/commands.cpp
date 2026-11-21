@@ -27,7 +27,7 @@ const CommandInfo kCommands[] = {
   {Command::StopRecord,"Stop Record"},{Command::LoopPlayback,"Loop Playback"},{Command::LoopRecord,"Loop Record"},
   {Command::ReturnToStart,"Return to Start"},{Command::GoToEnd,"Go to End"},{Command::Rewind,"Rewind"},
   {Command::FastForward,"Fast Forward"},{Command::QuickPunch,"QuickPunch"},{Command::Pause,"Pause"},
-  {Command::OnlinePlayback,"Online"},{Command::Metronome,"Metronome"},{Command::CountOff,"Count Off"},
+  {Command::OnlinePlayback,"Online"},{Command::Metronome,"Metronome"},{Command::CountOff,"Count Off"},{Command::PreRoll,"Pre-roll"},
   {Command::ModeShuffle,"Shuffle"},{Command::ModeSlip,"Slip"},{Command::ModeSpot,"Spot"},{Command::ModeGrid,"Grid"},
   {Command::ModeSnapToGrid,"Snap to Grid"},{Command::CycleEditModes,"Cycle Edit Modes"},
   {Command::ToolZoomer,"Zoomer"},{Command::ToolTrimmer,"Trimmer"},{Command::ToolSelector,"Selector"},

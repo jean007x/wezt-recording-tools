@@ -44,9 +44,19 @@ void Engine::deviceAboutToStart(const audio::AudioConfig& actual) {
   }
 }
 
+void Engine::beginRoll(bool record) {   // control thread, or the audio thread at the end of a count-off
+  const std::int64_t pre = preRoll_.load(std::memory_order_relaxed), pos = transport_.position();
+  if (record && pre > 0 && pos > 0) {
+    transport_.locate(std::max<std::int64_t>(0, pos - pre));
+    transport_.play();
+    recordAt_.store(pos, std::memory_order_release);   // after play(): the audio thread drops it while stopped
+  } else if (record) transport_.record();
+  else transport_.play();
+}
+
 void Engine::startWithCountOff(bool record) {
   const std::int64_t n = metronome_.countOffFrames(ctx_.sampleRate);
-  if (n <= 0) { if (record) transport_.record(); else transport_.play(); return; }
+  if (n <= 0) { beginRoll(record); return; }
   countOffRecord_.store(record, std::memory_order_relaxed);
   countOffTotal_.store(n, std::memory_order_relaxed);
   countOffLeft_.store(n, std::memory_order_release);
@@ -62,6 +72,14 @@ void Engine::process(const float* const* in, float* const* out, unsigned frames)
     if (counting > 0 && transport_.playing()) { countOffLeft_.store(0, std::memory_order_release); counting = 0; }   // already rolling: no count-off
     const bool playing = transport_.playing();
     if (counting > 0) chunk = static_cast<std::size_t>(std::min<std::int64_t>(static_cast<std::int64_t>(chunk), counting));
+    {   // pre-roll: switch recording on exactly at the punch-in frame
+      const std::int64_t at = recordAt_.load(std::memory_order_acquire);
+      if (at >= 0) {
+        if (!playing) recordAt_.store(-1, std::memory_order_release);
+        else if (start >= at) { transport_.record(); recordAt_.store(-1, std::memory_order_release); }
+        else if (at - start < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(at - start);
+      }
+    }
     if (playing) {  // end the chunk exactly at the loop end so the wrap is sample-accurate
       const std::int64_t toLoop = transport_.framesUntilLoopEnd();
       if (toLoop < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(std::max<std::int64_t>(1, toLoop));
@@ -103,7 +121,7 @@ void Engine::process(const float* const* in, float* const* out, unsigned frames)
       const std::int64_t left = counting - static_cast<std::int64_t>(chunk);
       std::int64_t expected = counting;
       if (countOffLeft_.compare_exchange_strong(expected, left, std::memory_order_acq_rel) && left <= 0) {   // (cancelled meanwhile: leave it)
-        if (countOffRecord_.load(std::memory_order_relaxed)) transport_.record(); else transport_.play();
+        beginRoll(countOffRecord_.load(std::memory_order_relaxed));
       }
     } else if (playing && metronome_.enabled()) {
       float* mixOut[16]; std::size_t nm = 0;
