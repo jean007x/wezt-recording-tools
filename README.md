@@ -22,7 +22,7 @@ not built, is `docs/FEATURE_COVERAGE.md`.
 |---|---|
 | Engine, graph, transport, recording to BWF/WAV; session, mixer, undo/redo, automation, VCA, memory locations | works, tested (headless) |
 | Audio I/O: WASAPI (exclusive and shared), CoreAudio (hog mode) | written; **simulated** on Linux |
-| VST3 and CLAP hosting, 32-bit bridge, plugin scanner/installer | works, tested with real SDK plugins; a real 32-bit helper is untested |
+| VST3 and CLAP hosting, 32-bit bridge, plugin scanner/installer | the hosting library works and is tested with real SDK plugins; the app has a plug-in browser (View menu) that adds them to a track, never tried by hand with a real plug-in; no plug-in editor windows; a real 32-bit helper is untested |
 | AAX, RTAS, TDM | not hostable (licensing, DSP hardware); matched to VST3/CLAP/AU twins |
 | AU, VST2 | scanned, no loader yet |
 | Editing: Elastic Audio, Beat Detective, strip silence, clip gain, clips list, playlists/comping | works, tested |

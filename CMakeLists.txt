@@ -311,11 +311,17 @@ if(WEZT_BUILD_UI)
     message(FATAL_ERROR "WEZT_IMGUI_DIR must point at a Dear ImGui checkout")
   endif()
   add_library(wezt_ui STATIC
-    src/ui/app.cpp src/ui/app_edit.cpp src/ui/app_mix.cpp src/ui/app_sampler.cpp src/ui/app_immersive.cpp src/ui/app_demo.cpp src/ui/app_assistant.cpp src/ui/app_clips.cpp src/ui/app_midi.cpp src/ui/app_voice.cpp src/ui/app_plugins.cpp src/ui/app_settings.cpp src/ui/intro.cpp src/ui/intro_gl.cpp
+    src/ui/app.cpp src/ui/app_edit.cpp src/ui/app_mix.cpp src/ui/app_sampler.cpp src/ui/app_immersive.cpp src/ui/app_demo.cpp src/ui/app_assistant.cpp src/ui/app_clips.cpp src/ui/app_midi.cpp src/ui/app_voice.cpp src/ui/app_plugins.cpp src/ui/app_settings.cpp src/ui/intro.cpp src/ui/intro_gl.cpp src/ui/insert_factory.cpp
     ${WEZT_IMGUI_DIR}/imgui.cpp ${WEZT_IMGUI_DIR}/imgui_draw.cpp ${WEZT_IMGUI_DIR}/imgui_tables.cpp ${WEZT_IMGUI_DIR}/imgui_widgets.cpp
     ${WEZT_IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp)
   target_include_directories(wezt_ui PUBLIC src ${WEZT_IMGUI_DIR})
   target_link_libraries(wezt_ui PUBLIC wezt_core)
+  if(WEZT_ENABLE_VST3)
+    target_link_libraries(wezt_ui PUBLIC wezt_vst3)
+  endif()
+  if(WEZT_ENABLE_CLAP)
+    target_link_libraries(wezt_ui PUBLIC wezt_clap)
+  endif()
   add_executable(wezt_ui_test tests/test_ui.cpp)
   target_link_libraries(wezt_ui_test PRIVATE wezt_ui)
   add_test(NAME wezt_ui_test COMMAND wezt_ui_test)

@@ -1,5 +1,6 @@
 #include "instruments/builtin.h"
 #include "ui/app.h"
+#include "ui/insert_factory.h"
 
 #include <algorithm>
 #include <cmath>
@@ -252,7 +253,7 @@ void App::execute(Command c) {
     case Command::AddTrack: addTrackQuick(true); break;
     case Command::DuplicateTrack: {
       TrackId n = -1;
-      WEZT_PAUSED(n = session_->duplicateTrack(selTrack_, [](const plugins::PluginDescriptor& d) -> std::unique_ptr<plugins::IPluginInstance> { return instruments::makeBuiltin(d); }));
+      WEZT_PAUSED(n = session_->duplicateTrack(selTrack_, [](const plugins::PluginDescriptor& d) -> std::unique_ptr<plugins::IPluginInstance> { return makeInsert(d); }));
       if (n >= 0) { selTrack_ = n; setStatus("Duplicated track"); } else setStatus("Nothing to duplicate");
       break;
     }
@@ -416,7 +417,7 @@ void App::drawFileDialog() {
         ok = true;
       } else if (k == "save") { ok = session_->save(dialogPath_, &err); if (ok) { sessionName_ = nameOf(dialogPath_); saveMidiParts(dialogPath_); } }
       else if (k == "open") {
-        auto loaded = session::Session::load(dialogPath_, [](const plugins::PluginDescriptor& d) -> std::unique_ptr<plugins::IPluginInstance> { return instruments::makeBuiltin(d); }, &err);
+        auto loaded = session::Session::load(dialogPath_, [](const plugins::PluginDescriptor& d) -> std::unique_ptr<plugins::IPluginInstance> { return makeInsert(d); }, &err);
         if (loaded) {
           WEZT_PAUSED({
             engine_->transport().stop();
@@ -554,6 +555,7 @@ void App::frame() {
   if (showClips_) drawClipsWindow();
   if (showVoiceBank_) drawVoiceBankWindow();
   if (showPlugParams_) drawPluginParamsWindow();
+  if (showPluginBrowser_) drawPluginBrowser();
   if (showPianoRoll_) drawPianoRollWindow();
   if (showScore_) drawScoreWindow();
   if (showAssistant_) drawAssistantWindow();
@@ -629,6 +631,7 @@ void App::drawMenu() {
     if (ImGui::MenuItem("Score", nullptr, showScore_)) showScore_ = !showScore_;
     if (ImGui::MenuItem("Clips and Playlists", nullptr, showClips_)) showClips_ = !showClips_;
     if (ImGui::MenuItem("My Voice Bank (record vowels)", nullptr, showVoiceBank_)) showVoiceBank_ = !showVoiceBank_;
+    if (ImGui::MenuItem("Plug-ins (VST3, CLAP)...", nullptr, showPluginBrowser_)) showPluginBrowser_ = !showPluginBrowser_;
     if (ImGui::MenuItem("Plugin Parameters and Automation", nullptr, showPlugParams_)) showPlugParams_ = !showPlugParams_;
     if (ImGui::MenuItem("Assistant (local AI)", nullptr, showAssistant_)) showAssistant_ = !showAssistant_;
     if (ImGui::MenuItem("Keyboard shortcuts...")) showKeymap_ = true;

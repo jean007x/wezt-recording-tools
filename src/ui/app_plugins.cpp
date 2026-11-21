@@ -4,10 +4,79 @@
 #include <algorithm>
 #include <cmath>
 
+#include <cctype>
+
 #include "imgui.h"
+#include "misc/cpp/imgui_stdlib.h"
 #include "ui/app.h"
+#include "ui/insert_factory.h"
 
 namespace wezt::ui {
+
+// The plug-in browser: finds VST3 and CLAP plug-ins on this computer (reading folders and file headers only; nothing is run until you add one),
+// says plainly which ones this build can host, and puts a chosen one on the selected track as an insert.
+void App::drawPluginBrowser() {
+  ImGui::SetNextWindowSize(ImVec2(720, 420), ImGuiCond_FirstUseEver);
+  if (!ImGui::Begin("Plug-ins (VST3, CLAP)", &showPluginBrowser_)) { ImGui::End(); return; }
+  if (!thirdPartyHosting()) {
+    ImGui::TextWrapped("This copy of Wezt was built without VST3/CLAP hosting, so it can only use its own instruments and effects.");
+    ImGui::End(); return;
+  }
+  if (!pbScanned_ || ImGui::Button("Scan this computer")) {
+    plugins::PluginLibrary lib;
+    lib.scan(plugins::PluginLibrary::defaultSearchPaths());
+    pbEntries_ = lib.entries();
+    pbScanned_ = true;
+    pbMessage_ = std::to_string(pbEntries_.size()) + " plug-in files found";
+  }
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(220);
+  ImGui::InputTextWithHint("##pbf", "filter by name", &pbFilter_);
+  ImGui::SameLine();
+  const auto* tr = session_->track(selTrack_);
+  ImGui::TextDisabled("%s", tr ? ("adds to: " + tr->name).c_str() : "select a track first");
+  ImGui::TextDisabled("%s", pbMessage_.c_str());
+  if (ImGui::BeginTable("##pbt", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable, ImVec2(0, ImGui::GetContentRegionAvail().y))) {
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 2.f);
+    ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 90.f);
+    ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthStretch, 3.f);
+    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 70.f);
+    ImGui::TableHeadersRow();
+    auto lower = [](std::string x) { for (auto& c : x) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return x; };
+    const std::string f = lower(pbFilter_);
+    int row = 0;
+    for (const auto& e : pbEntries_) {
+      if (!f.empty() && lower(e.plugin.name).find(f) == std::string::npos) continue;
+      ImGui::TableNextRow();
+      ImGui::TableNextColumn(); ImGui::TextUnformatted(e.plugin.name.c_str());
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", e.plugin.path.c_str());
+      ImGui::TableNextColumn(); ImGui::TextUnformatted(plugins::formatName(e.plugin.format).c_str());
+      ImGui::TableNextColumn(); ImGui::TextWrapped("%s", e.reason.c_str());
+      ImGui::TableNextColumn();
+      const bool can = e.hostability == plugins::Hostability::Native && tr;
+      ImGui::BeginDisabled(!can);
+      if (ImGui::Button(("Add##pb" + std::to_string(row)).c_str())) {
+        std::string err;
+        std::unique_ptr<plugins::IPluginInstance> inst = makeInsert(e.plugin, &err);
+        if (!inst) setStatus("Could not load " + e.plugin.name + ": " + err);
+        else {
+          plugins::PluginDescriptor d = e.plugin;
+          const bool was = deviceRunning_;
+          if (was) device_->stop();
+          const bool ok = session_->addInsert(selTrack_, std::move(inst), d);
+          std::string e2;
+          if (was) device_->start(&e2);
+          if (ok) { setStatus("Added " + d.name + " to " + tr->name); ppTrack_ = selTrack_; ppInsert_ = static_cast<int>(tr->inserts.size()) - 1; ppParam_ = -1; showPlugParams_ = true; }
+          else setStatus("Could not add " + d.name);
+        }
+      }
+      ImGui::EndDisabled();
+      ++row;
+    }
+    ImGui::EndTable();
+  }
+  ImGui::End();
+}
 
 void App::drawPluginParamsWindow() {
   ImGui::SetNextWindowSize(ImVec2(560, 520), ImGuiCond_FirstUseEver);
