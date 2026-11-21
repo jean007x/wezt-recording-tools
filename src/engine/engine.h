@@ -5,6 +5,7 @@
 #include "audio/audio_device.h"
 #include "engine/context.h"
 #include "engine/graph.h"
+#include "engine/metronome.h"
 #include "engine/transport.h"
 
 namespace wezt {
@@ -27,6 +28,12 @@ class Engine : public audio::AudioCallback {
          std::size_t scratchCaptureSeconds = 60);
 
   Transport& transport() { return transport_; }
+  Metronome& metronome() { return metronome_; }
+  // Starts the transport (recording or just playing) after the metronome's count-off, if one is set; with none it starts at once.
+  // While counting, the playhead stays where it is and nothing plays but the click. cancelCountOff() stops that without starting.
+  void startWithCountOff(bool record);
+  void cancelCountOff() { countOffLeft_.store(0, std::memory_order_release); }
+  bool countingOff() const { return countOffLeft_.load(std::memory_order_acquire) > 0; }
   // Processors (e.g. the mixer) keep this pointer and read it inside process().
   const RtContext* context() const { return &ctx_; }
 
@@ -46,6 +53,9 @@ class Engine : public audio::AudioCallback {
  private:
   Graph& graph_;
   Transport transport_;
+  Metronome metronome_;
+  std::atomic<std::int64_t> countOffLeft_{0}, countOffTotal_{0};
+  std::atomic<bool> countOffRecord_{false};
   RtContext ctx_;
   AudioBuffer block_;
   std::vector<float> zeros_;

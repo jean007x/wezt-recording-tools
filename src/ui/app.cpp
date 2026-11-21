@@ -168,6 +168,7 @@ bool App::isImplemented(Command c) const {
   switch (c) {
     case Command::PlayStop: case Command::Record: case Command::LoopPlayback: case Command::ReturnToStart: case Command::GoToEnd:
     case Command::Rewind: case Command::FastForward:
+    case Command::Metronome: case Command::CountOff:
     case Command::ModeShuffle: case Command::ModeSlip: case Command::ModeSpot: case Command::ModeGrid:
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
     case Command::CycleEditModes: case Command::CycleEditTools:
@@ -193,12 +194,21 @@ void App::execute(Command c) {
   };
   if (!isImplemented(c)) { setStatus(std::string(commandName(c)) + " is not available yet"); return; }
   switch (c) {
-    case Command::PlayStop: if (tr.playing()) tr.stop(); else tr.play(); break;
+    case Command::PlayStop: if (engine_->countingOff()) engine_->cancelCountOff(); else if (tr.playing()) tr.stop(); else tr.play(); break;
+    case Command::Metronome: metronome_ = !metronome_; setStatus(metronome_ ? "Metronome on" : "Metronome off"); break;
+    case Command::CountOff: {
+      const int cur = engine_->metronome().countOffBars(), next = cur == 0 ? 1 : cur == 1 ? 2 : cur == 2 ? 4 : 0;
+      engine_->metronome().setCountOffBars(next);
+      setStatus(next ? "Count-off before recording: " + std::to_string(next) + (next == 1 ? " bar" : " bars") : std::string("Count-off off"));
+      break;
+    }
     case Command::Record: {
       bool any = false;
       for (auto id : session_->trackIds()) any = any || session_->track(id)->source->armed();
       if (!any) { setStatus("Arm a track (R) before recording"); break; }
-      if (tr.recording()) tr.stop(); else tr.record();
+      if (engine_->countingOff()) engine_->cancelCountOff();
+      else if (tr.recording()) tr.stop();
+      else engine_->startWithCountOff(true);
       break;
     }
     case Command::LoopPlayback:
@@ -478,6 +488,8 @@ void App::frame() {
   updateMeters();
   syncLiveMidi();
   for (session::TrackId id : session_->trackIds()) if (instruments::Sampler* sm = samplerOn(id)) sm->setTempo(static_cast<double>(tempo_));
+  engine_->metronome().setTempo(static_cast<double>(tempo_));
+  engine_->metronome().setEnabled(metronome_);
   handleKeys();
   watchEdits();
   drawMenu();

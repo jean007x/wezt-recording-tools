@@ -56,7 +56,7 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 
 | Feature | State |
 |---|---|
-| Transport: play, stop, record, loop, locate | done; pre/post-roll, count-off, QuickPunch not built |
+| Transport: play, stop, record, loop, locate | done. Metronome (a click on every beat, louder on the bar's first beat, mixed after the graph so it is heard but never recorded or bounced) and count-off before recording (off / 1 / 2 / 4 bars; the song waits while only the clicks play) are built and unit-tested in `test_engine` (frame-exact beats, the song starts at the end of the count, cancelling). Time signature is fixed at 4 beats a bar and the click sound is not configurable. Pre/post-roll and QuickPunch not built |
 | Setup: Playback Engine (device, buffer), exclusive mode | done (simulated on Linux) |
 | VST3, CLAP hosting, 32-bit bridge, plug-in scanner / installer | done; AAX, RTAS, TDM not hostable (licensing, DSP hardware) |
 | Immersive: layouts to 9.1.6, VBAP, binaural monitor, ADM BWF export | done; not routed into live audio |

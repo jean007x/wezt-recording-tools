@@ -44,13 +44,24 @@ void Engine::deviceAboutToStart(const audio::AudioConfig& actual) {
   }
 }
 
+void Engine::startWithCountOff(bool record) {
+  const std::int64_t n = metronome_.countOffFrames(ctx_.sampleRate);
+  if (n <= 0) { if (record) transport_.record(); else transport_.play(); return; }
+  countOffRecord_.store(record, std::memory_order_relaxed);
+  countOffTotal_.store(n, std::memory_order_relaxed);
+  countOffLeft_.store(n, std::memory_order_release);
+}
+
 void Engine::process(const float* const* in, float* const* out, unsigned frames) {
   ScopedNoDenormals noDenormals;
   unsigned done = 0;
   while (done < frames) {
     std::size_t chunk = std::min<std::size_t>(frames - done, maxBlock_);
     const std::int64_t start = transport_.beginBlock();
+    std::int64_t counting = countOffLeft_.load(std::memory_order_acquire);
+    if (counting > 0 && transport_.playing()) { countOffLeft_.store(0, std::memory_order_release); counting = 0; }   // already rolling: no count-off
     const bool playing = transport_.playing();
+    if (counting > 0) chunk = static_cast<std::size_t>(std::min<std::int64_t>(static_cast<std::int64_t>(chunk), counting));
     if (playing) {  // end the chunk exactly at the loop end so the wrap is sample-accurate
       const std::int64_t toLoop = transport_.framesUntilLoopEnd();
       if (toLoop < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(std::max<std::int64_t>(1, toLoop));
@@ -84,6 +95,20 @@ void Engine::process(const float* const* in, float* const* out, unsigned frames)
         for (std::size_t i = 0; i < chunk; ++i) dst[i] = std::isfinite(src[i]) ? src[i] : 0.f;
       }
       else std::fill(dst, dst + chunk, 0.f);
+    }
+    if (counting > 0) {   // the count-off: only the click is heard, the song waits
+      float* mixOut[16]; std::size_t nm = 0;
+      for (unsigned c = 0; c < devOut_ && c < 16; ++c) mixOut[nm++] = out[c] + done;
+      metronome_.mix(mixOut, nm, chunk, countOffTotal_.load(std::memory_order_relaxed) - counting, ctx_.sampleRate);
+      const std::int64_t left = counting - static_cast<std::int64_t>(chunk);
+      std::int64_t expected = counting;
+      if (countOffLeft_.compare_exchange_strong(expected, left, std::memory_order_acq_rel) && left <= 0) {   // (cancelled meanwhile: leave it)
+        if (countOffRecord_.load(std::memory_order_relaxed)) transport_.record(); else transport_.play();
+      }
+    } else if (playing && metronome_.enabled()) {
+      float* mixOut[16]; std::size_t nm = 0;
+      for (unsigned c = 0; c < devOut_ && c < 16; ++c) mixOut[nm++] = out[c] + done;
+      metronome_.mix(mixOut, nm, chunk, start, ctx_.sampleRate);
     }
     if (playing) transport_.advance(static_cast<std::int64_t>(chunk));
     done += static_cast<unsigned>(chunk);

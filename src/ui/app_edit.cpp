@@ -224,6 +224,16 @@ void App::drawTransport() {
   caption("TEMPO"); ImGui::SameLine(0, 6);
   ImGui::SetNextItemWidth(64);
   ImGui::DragFloat("##tempo", &tempo_, 0.5f, 30.f, 300.f, "%.1f");
+  ImGui::SameLine(0, 6);
+  if (st::chip("Click", metronome_, blue, ImVec2(46, 26))) execute(Command::Metronome);
+  if (ImGui::IsItemHovered()) ImGui::SetTooltip("Metronome: a click on every beat while playing (heard, never recorded)");
+  ImGui::SameLine(0, 2);
+  {
+    const int cb = engine_->metronome().countOffBars();
+    const std::string lbl = cb == 0 ? "Count" : "Count " + std::to_string(cb);
+    if (st::chip((lbl + "##cnt").c_str(), cb > 0 || engine_->countingOff(), blue, ImVec2(66, 26))) execute(Command::CountOff);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Count-off: bars of clicks before recording starts (click to change: off, 1, 2, 4)");
+  }
 
   // ---- counters at the right
   const double rate = session_->sampleRate();

@@ -332,7 +332,52 @@ void testFaultContainment() {
   CHECK(g.nonFiniteBlocks(bad) == 4);                           // only the four bad blocks before the mute count; muted and healthy blocks do not
 }
 
+static double energy(const std::vector<float>& v, std::size_t a, std::size_t b) { double e = 0; for (std::size_t i = a; i < b && i < v.size(); ++i) e += static_cast<double>(v[i]) * v[i]; return e; }
+
+static void testMetronomeAndCountOff() {
+  {  // a click on every beat while playing (120 bpm at 48 kHz = a beat every 24000 frames), louder on the bar's first beat
+    Rig r(128); CHECK(r.start(0, 2));
+    r.e->metronome().setEnabled(true); r.e->metronome().setTempo(120.0);
+    r.e->transport().play();
+    const auto o = runSizes(r, 2, std::vector<unsigned>(800, 128));
+    CHECK(energy(o, 0, 2000) > 1e-3);                              // beat 1 (the accent)
+    CHECK(energy(o, 8000, 20000) < 1e-9);                          // quiet between beats
+    CHECK(energy(o, 24000, 26000) > 1e-3 && energy(o, 48000, 50000) > 1e-3);
+    CHECK(energy(o, 0, 2000) > energy(o, 24000, 26000));           // the accent is louder
+    r.e->metronome().setEnabled(false);
+    r.e->transport().locate(0);
+    const auto q = runSizes(r, 2, std::vector<unsigned>(100, 128));
+    CHECK(energy(q, 0, q.size()) == 0.0);                          // off: silent
+  }
+  {  // a one-bar count-off before recording: four clicks, the song waits, then it rolls and records
+    Rig r(128); CHECK(r.start(0, 2));
+    r.e->metronome().setTempo(120.0); r.e->metronome().setCountOffBars(1);
+    r.e->startWithCountOff(true);
+    CHECK(r.e->countingOff() && !r.e->transport().playing());
+    const auto o = runSizes(r, 2, std::vector<unsigned>(500, 128));   // 64000 frames: still counting (the bar is 96000)
+    CHECK(r.e->countingOff() && !r.e->transport().playing() && r.e->transport().position() == 0);
+    CHECK(energy(o, 0, 2000) > 1e-3 && energy(o, 24000, 26000) > 1e-3 && energy(o, 48000, 50000) > 1e-3);
+    CHECK(energy(o, 8000, 20000) < 1e-9);
+    runSizes(r, 2, std::vector<unsigned>(300, 128));                   // past the end of the bar
+    CHECK(!r.e->countingOff() && r.e->transport().playing() && r.e->transport().recording());
+    CHECK(r.e->transport().position() < 20000);                        // the song started at the end of the count, not before
+  }
+  {  // cancelling stops the count without starting; no count-off set means an immediate start
+    Rig r(128); CHECK(r.start(0, 2));
+    r.e->metronome().setCountOffBars(2);
+    r.e->startWithCountOff(false);
+    runSizes(r, 2, std::vector<unsigned>(10, 128));
+    r.e->cancelCountOff();
+    runSizes(r, 2, std::vector<unsigned>(10, 128));
+    CHECK(!r.e->countingOff() && !r.e->transport().playing());
+    r.e->metronome().setCountOffBars(0);
+    r.e->startWithCountOff(false);
+    CHECK(r.e->transport().playing() && !r.e->countingOff());
+  }
+}
+
 int main() {
+  testMetronomeAndCountOff();
   testFaultContainment();
   testNonFiniteOutput();
   testVariableCallbackSizes();
