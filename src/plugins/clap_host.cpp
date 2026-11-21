@@ -105,10 +105,27 @@ void entryDeinit(const clap_plugin_entry_t* e, const std::string& key) {
 
 // ---- minimal host ----------------------------------------------------------------------------
 // host_data points at this instance's flag: the plug-in says its latency changed (any thread), the control thread collects it.
-void hostLatencyChanged(const clap_host_t* h) { if (h && h->host_data) static_cast<std::atomic<bool>*>(h->host_data)->store(true, std::memory_order_release); }
+struct HostState {
+  std::atomic<bool> latencyChanged{false};
+  std::atomic<bool> guiResized{false};       // the plug-in's window asked for another size
+  std::atomic<int> guiW{0}, guiH{0};
+  std::atomic<bool> guiClosed{false};        // the plug-in closed its own window
+};
+void hostLatencyChanged(const clap_host_t* h) { if (h && h->host_data) static_cast<HostState*>(h->host_data)->latencyChanged.store(true, std::memory_order_release); }
 const clap_host_latency_t kHostLatency = {hostLatencyChanged};
+bool guiRequestResize(const clap_host_t* h, std::uint32_t w, std::uint32_t ht) {
+  if (!h || !h->host_data) return false;
+  auto* st = static_cast<HostState*>(h->host_data);
+  st->guiW.store(static_cast<int>(w)); st->guiH.store(static_cast<int>(ht)); st->guiResized.store(true, std::memory_order_release);
+  return true;
+}
+bool guiFalse(const clap_host_t*) { return false; }
+void guiResizeHints(const clap_host_t*) {}
+void guiClosed(const clap_host_t* h, bool) { if (h && h->host_data) static_cast<HostState*>(h->host_data)->guiClosed.store(true, std::memory_order_release); }
+const clap_host_gui_t kHostGui = {guiResizeHints, guiRequestResize, guiFalse, guiFalse, guiClosed};
 const void* hostGetExtension(const clap_host_t*, const char* id) {
   if (id && std::strcmp(id, CLAP_EXT_LATENCY) == 0) return &kHostLatency;
+  if (id && std::strcmp(id, CLAP_EXT_GUI) == 0) return &kHostGui;
   return nullptr;   // no other host extensions yet
 }
 void hostNoop(const clap_host_t*) {}
@@ -172,6 +189,9 @@ std::vector<ClapClassInfo> describeClap(const std::string& path, std::string* er
 }
 
 struct ClapInstance::Impl {
+  HostState hostState;
+  const clap_plugin_gui_t* gui = nullptr;
+  bool guiOpen = false, guiCreated = false;
   Lib lib;  // declared first: destroyed last
   const clap_plugin_entry_t* entry = nullptr;
   std::string key;            // identifies the library for the init/deinit count
@@ -216,6 +236,7 @@ ClapInstance::ClapInstance() : impl_(std::make_unique<Impl>()) {}
 
 ClapInstance::~ClapInstance() {
   if (!impl_) return;
+  closeEditor();
   auto& d = *impl_;
   d.deactivate();
   if (d.plugin) d.plugin->destroy(d.plugin);
@@ -249,7 +270,7 @@ std::unique_ptr<ClapInstance> ClapInstance::load(const std::string& path, std::s
   }
   if (!chosen) return fail("plugin id not found: " + pluginId);
 
-  d.host.host_data = &d.latencyChanged;   // the host struct is part of the instance, so its address is stable
+  d.host.host_data = &d.hostState;   // the host struct is part of the instance, so its address is stable
   d.plugin = factory->create_plugin(factory, &d.host, chosen->id);
   if (!d.plugin) return fail(std::string("create_plugin failed for ") + chosen->id);
   if (!d.plugin->init(d.plugin)) {
@@ -263,6 +284,7 @@ std::unique_ptr<ClapInstance> ClapInstance::load(const std::string& path, std::s
   d.params = static_cast<const clap_plugin_params_t*>(ext(CLAP_EXT_PARAMS));
   d.state = static_cast<const clap_plugin_state_t*>(ext(CLAP_EXT_STATE));
   d.latency = static_cast<const clap_plugin_latency_t*>(ext(CLAP_EXT_LATENCY));
+  d.gui = static_cast<const clap_plugin_gui_t*>(ext(CLAP_EXT_GUI));
   d.ports = static_cast<const clap_plugin_audio_ports_t*>(ext(CLAP_EXT_AUDIO_PORTS));
 
   if (auto* np = static_cast<const clap_plugin_note_ports_t*>(ext(CLAP_EXT_NOTE_PORTS)))
@@ -447,13 +469,72 @@ void ClapInstance::process(const AudioBuffer& in, AudioBuffer& out) {
   }
 }
 
-bool ClapInstance::takeLatencyChanged() { return impl_->latencyChanged.exchange(false, std::memory_order_acq_rel); }
+bool ClapInstance::takeLatencyChanged() { return impl_->hostState.latencyChanged.exchange(false, std::memory_order_acq_rel); }
 
 std::size_t ClapInstance::latencySamples() const {
   return impl_->latency ? impl_->latency->get(impl_->plugin) : 0;
 }
 
 bool ClapInstance::acceptsMidi() const { return impl_->midiIn; }
+
+// ---- the plug-in's own window (embedded in a native parent; Windows and macOS) ----
+static const char* guiApi() {
+#if defined(_WIN32)
+  return CLAP_WINDOW_API_WIN32;
+#elif defined(__APPLE__)
+  return CLAP_WINDOW_API_COCOA;
+#else
+  return nullptr;
+#endif
+}
+
+bool ClapInstance::editorSupported() const {
+  const auto& d = *impl_;
+  return d.gui && guiApi() && d.gui->is_api_supported && d.gui->is_api_supported(d.plugin, guiApi(), false);
+}
+
+bool ClapInstance::openEditor(void* parent, int* width, int* height, std::string* error) {
+  auto fail = [&](const std::string& m) { if (error) *error = m; return false; };
+  auto& d = *impl_;
+  if (!guiApi()) return fail("plug-in windows are not supported on Linux yet");
+  if (!editorSupported()) return fail("the plug-in has no window this system can show");
+  if (d.guiOpen) return true;
+  if (!d.gui->create(d.plugin, guiApi(), false)) return fail("the plug-in could not create its window");
+  d.guiCreated = true;
+  clap_window_t w = {};
+  w.api = guiApi();
+#if defined(_WIN32)
+  w.win32 = parent;
+#elif defined(__APPLE__)
+  w.cocoa = parent;
+#endif
+  if (!d.gui->set_parent(d.plugin, &w)) { d.gui->destroy(d.plugin); d.guiCreated = false; return fail("the plug-in could not use the window"); }
+  std::uint32_t gw = 640, gh = 480;
+  if (!d.gui->get_size(d.plugin, &gw, &gh)) { gw = 640; gh = 480; }
+  d.gui->show(d.plugin);
+  d.guiOpen = true;
+  d.hostState.guiResized.store(false); d.hostState.guiClosed.store(false);
+  if (width) *width = static_cast<int>(gw);
+  if (height) *height = static_cast<int>(gh);
+  return true;
+}
+
+void ClapInstance::closeEditor() {
+  auto& d = *impl_;
+  if (d.guiOpen && d.gui) d.gui->hide(d.plugin);
+  if (d.guiCreated && d.gui) d.gui->destroy(d.plugin);
+  d.guiOpen = d.guiCreated = false;
+}
+
+bool ClapInstance::editorResized(int* width, int* height) {
+  auto& d = *impl_;
+  if (!d.guiOpen || !d.hostState.guiResized.exchange(false, std::memory_order_acq_rel)) return false;
+  int w = d.hostState.guiW.load(), h = d.hostState.guiH.load();
+  if (d.gui && d.gui->set_size) d.gui->set_size(d.plugin, static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h));
+  if (width) *width = w;
+  if (height) *height = h;
+  return true;
+}
 void ClapInstance::handleMidi(const MidiEvent* events, std::size_t count) {
   auto& d = *impl_;
   d.midiN = 0;

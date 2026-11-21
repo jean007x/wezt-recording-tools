@@ -31,6 +31,10 @@ class ClapInstance : public IPluginInstance {
   // MIDI: true when the plug-in has a note input (CLAP note events, or MIDI bytes). Events arrive on the
   // audio thread just before process() and are delivered at their sample offsets.
   bool acceptsMidi() const override;
+  bool editorSupported() const override;
+  bool openEditor(void* nativeParent, int* width, int* height, std::string* error) override;
+  void closeEditor() override;
+  bool editorResized(int* width, int* height) override;
   void handleMidi(const MidiEvent* events, std::size_t count) override;
 
   std::size_t parameterCount() const override;
