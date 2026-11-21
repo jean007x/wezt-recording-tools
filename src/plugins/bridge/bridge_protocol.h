@@ -11,10 +11,12 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "engine/midi_event.h"
+
 namespace wezt::plugins::bridge {
 
 constexpr std::uint32_t kMagic = 0x525A5757;  // "WWZR"
-constexpr std::uint32_t kVersion = 1;
+constexpr std::uint32_t kVersion = 2;
 constexpr std::size_t kStateCapacity = 16u * 1024u * 1024u;  // state / param-list blob
 constexpr std::size_t kParamRingSize = 256;
 
@@ -57,6 +59,10 @@ struct Header {
 
   std::atomic<std::uint32_t> paramHead, paramTail;
   ParamEdit params[kParamRingSize];
+
+  std::atomic<std::uint32_t> acceptsMidi;  // written by helper after load
+  std::atomic<std::uint32_t> midiCount;    // events for the current kCmdProcess (host writes, helper clears)
+  wezt::MidiEvent midi[wezt::kMaxMidiPerBlock];
 
   char pluginName[128];
   char error[256];

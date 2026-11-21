@@ -143,6 +143,18 @@ void BridgedPluginInstance::process(const AudioBuffer& in, AudioBuffer& out) {
   }
 }
 
+bool BridgedPluginInstance::acceptsMidi() const {
+  return impl_->header && impl_->ready.load() && !impl_->crashed.load() && impl_->header->acceptsMidi.load() != 0;
+}
+
+void BridgedPluginInstance::handleMidi(const MidiEvent* events, std::size_t count) {
+  auto& d = *impl_;
+  if (!d.header || !d.ready.load(std::memory_order_acquire) || d.crashed.load(std::memory_order_relaxed)) return;
+  const std::size_t n = std::min(count, kMaxMidiPerBlock);
+  std::copy(events, events + n, d.header->midi);
+  d.header->midiCount.store(static_cast<std::uint32_t>(n), std::memory_order_release);
+}
+
 std::size_t BridgedPluginInstance::latencySamples() const {
   return impl_->header && impl_->ready.load() && !impl_->crashed.load() ? static_cast<std::size_t>(std::max(0, impl_->header->latency.load())) : 0;
 }

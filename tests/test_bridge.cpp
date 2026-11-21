@@ -89,6 +89,36 @@ int main(int argc, char** argv) {
   const std::string helper = argv[1], pluginPath = argv[2];
   std::string err;
 
+  // An instrument in safe mode: notes cross the bridge and make sound; an effect reports no MIDI.
+  if (argc >= 4) {
+    BridgeConfig cfg;
+    cfg.helperExecutable = helper;
+    cfg.helperArgs = {"--class", argc >= 5 ? argv[4] : "mda Piano"};
+    BridgedPluginInstance b(cfg, argv[3]);
+    b.prepare(48000, 256);
+    CHECK(b.ready());
+    CHECK(b.acceptsMidi());
+    AudioBuffer in(2, 256), out(2, 256);
+    float before = 0, after = 0;
+    for (int i = 0; i < 4; ++i) { b.process(in, out); before = std::fmax(before, peakOfBuf(out)); }
+    MidiEvent on;
+    on.type = MidiEvent::NoteOn; on.a = 69; on.b = 110; on.offset = 0;
+    b.handleMidi(&on, 1);
+    b.process(in, out);
+    after = peakOfBuf(out);
+    for (int i = 0; i < 30; ++i) { b.process(in, out); after = std::fmax(after, peakOfBuf(out)); }
+    std::printf("bridged instrument: peak before note %.6f, after %.4f\n", before, after);
+    CHECK(before < 1e-4f);
+    CHECK(after > 0.01f);
+  }
+  {
+    BridgeConfig cfg;
+    cfg.helperExecutable = helper;
+    BridgedPluginInstance e(cfg, pluginPath);
+    e.prepare(48000, 256);
+    if (e.ready()) CHECK(!e.acceptsMidi());
+  }
+
   // A helper that cannot start: clear failure, no hang, silence out.
   {
     BridgeConfig bad;

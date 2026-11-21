@@ -258,7 +258,7 @@ if(WEZT_ENABLE_BRIDGE)
 
   add_executable(wezt_bridge_test tests/test_bridge.cpp)
   target_link_libraries(wezt_bridge_test PRIVATE wezt_bridge wezt_vst3)
-  add_test(NAME wezt_bridge_test COMMAND wezt_bridge_test $<TARGET_FILE:wezt-bridge> $<$<BOOL:${WEZT_VST3_TEST_PLUGIN}>:${WEZT_VST3_TEST_PLUGIN}>)
+  add_test(NAME wezt_bridge_test COMMAND wezt_bridge_test $<TARGET_FILE:wezt-bridge> $<$<BOOL:${WEZT_VST3_TEST_PLUGIN}>:${WEZT_VST3_TEST_PLUGIN}> $<$<AND:$<BOOL:${WEZT_VST3_TEST_PLUGIN}>,$<BOOL:${WEZT_VST3_TEST_INSTRUMENT}>>:${WEZT_VST3_TEST_INSTRUMENT}>)
 endif()
 
 # Make `cmake --build` + `ctest` work with no manual steps: when the SDK's sample plugins are enabled,

@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
 
   const auto pluginIt = args.find("plugin");
   if (pluginIt == args.end()) return fail("no --plugin given");
-  auto inst = Vst3Instance::load(pluginIt->second, &err);
+  auto inst = Vst3Instance::load(pluginIt->second, &err, args.count("class") ? args.at("class") : std::string());
   if (!inst) return fail(err);
 
   const Layout lay = Layout::compute(h->channels, h->maxFrames);
@@ -62,6 +62,7 @@ int main(int argc, char** argv) {
   copyStr(h->pluginName, sizeof h->pluginName, inst->name());
   h->paramCount.store(static_cast<std::uint32_t>(inst->parameterCount()));
   h->latency.store(static_cast<std::int32_t>(inst->latencySamples()));
+  h->acceptsMidi.store(inst->acceptsMidi() ? 1 : 0);
   h->helperState.store(kHelperReady, std::memory_order_release);
   ipc.signalDone();  // "ready"
 
@@ -95,6 +96,11 @@ int main(int argc, char** argv) {
           std::copy(inAudio + static_cast<std::size_t>(c) * maxFrames, inAudio + static_cast<std::size_t>(c) * maxFrames + frames,
                     inBuf.channel(c));
         if (stallMs > 0 && ++blockCount == stallAt) std::this_thread::sleep_for(std::chrono::milliseconds(stallMs));
+        {
+          const auto n = std::min<std::uint32_t>(h->midiCount.load(std::memory_order_acquire), static_cast<std::uint32_t>(kMaxMidiPerBlock));
+          if (n) inst->handleMidi(h->midi, n);
+          h->midiCount.store(0, std::memory_order_relaxed);
+        }
         inst->process(inBuf, outBuf);
         for (std::uint32_t c = 0; c < channels; ++c)
           std::copy(outBuf.channel(c), outBuf.channel(c) + frames, outAudio + static_cast<std::size_t>(c) * maxFrames);

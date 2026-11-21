@@ -68,6 +68,7 @@ std::unique_ptr<plugins::IPluginInstance> makeInsert(const plugins::PluginDescri
     if (helper.empty()) { if (error) *error = "safe mode needs the wezt-bridge program next to Wezt, and it is missing"; return nullptr; }
     plugins::BridgeConfig cfg;
     cfg.helperExecutable = helper;
+    if (!d.name.empty()) { cfg.helperArgs.push_back("--class"); cfg.helperArgs.push_back(d.name); }
     return std::make_unique<plugins::BridgedPluginInstance>(cfg, d.path, 2);
   }
 #endif

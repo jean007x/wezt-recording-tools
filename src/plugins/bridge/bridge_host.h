@@ -33,6 +33,8 @@ class BridgedPluginInstance : public IPluginInstance {
   bool setParameterNormalized(unsigned id, double value) override;
   bool automateParameter(unsigned id, double value) override;
   bool supportsAutomation() const override { return true; }
+  bool acceptsMidi() const override;
+  void handleMidi(const MidiEvent* events, std::size_t count) override;   // audio thread, before process()
   double parameterNormalized(unsigned id) const override;
 
   bool ready() const;
