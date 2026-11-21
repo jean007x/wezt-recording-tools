@@ -402,7 +402,7 @@ bool Session::addInsert(TrackId id, std::unique_ptr<plugins::IPluginInstance> pl
   InsertSlot s;
   s.descriptor = d;
   s.instance = plugin.get();
-  if (plugin && plugin->supportsAutomation() && !plugin->acceptsMidi()) {   // effects: automation inside the block
+  if (plugin && plugin->supportsAutomation()) {   // effects and instruments: automation inside the block
     t->source->addSplitHost(plugin.get());
     s.node = graph_.add(std::make_unique<AutomatedEffect>(std::move(plugin), t->source));
   } else if (plugin) s.node = graph_.add(std::move(plugin));

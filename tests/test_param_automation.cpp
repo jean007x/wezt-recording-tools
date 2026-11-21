@@ -10,6 +10,7 @@
 #include "dsp/effect_plugins.h"
 #include "engine/engine.h"
 #include "instruments/builtin.h"
+#include "session/midi_player.h"
 #include "session/session.h"
 
 using namespace wezt;
@@ -172,6 +173,49 @@ int main() {
     double lo = 1e9, hi = -1e9;   // out = ref * (the track's constant pan gain): the ratio must not wobble at the cuts
     for (std::size_t i = 0; i < 256; ++i) { const double ref = 0.1 * std::sin(2 * M_PI * 440 * double(i) / kSr); if (std::fabs(ref) > 0.02) { const double q = out[i] / ref; lo = std::min(lo, q); hi = std::max(hi, q); } }
     CHECK(hi - lo < 1e-3);
+  }
+  {  // an instrument is run in pieces too, and a note still starts on its own frame: the track's MIDI is cut up with the block
+    struct Synth : plugins::IPluginInstance {
+      struct Piece { std::size_t start, frames; std::vector<std::pair<std::size_t, int>> notes; double v; };
+      std::vector<Piece>* log; std::atomic<double> v{0.0}; std::vector<MidiEvent> pending; std::size_t pos = 0;
+      explicit Synth(std::vector<Piece>* l) : log(l) {}
+      std::size_t parameterCount() const override { return 1; }
+      std::vector<std::uint8_t> saveState() const override { return {}; }
+      bool loadState(const std::vector<std::uint8_t>&) override { return true; }
+      std::vector<plugins::ParamInfo> parameters() const override { plugins::ParamInfo p; p.id = 0; p.name = "x"; return {p}; }
+      double parameterNormalized(unsigned) const override { return v.load(); }
+      bool automateParameter(unsigned, double n) override { v.store(n); return true; }
+      bool supportsAutomation() const override { return true; }
+      bool acceptsMidi() const override { return true; }
+      void handleMidi(const MidiEvent* e, std::size_t n) override { pending.assign(e, e + n); }
+      void process(const AudioBuffer&, AudioBuffer& out) override {
+        Piece p{pos, out.frames, {}, v.load()};
+        for (const auto& e : pending) if (e.type == MidiEvent::NoteOn) p.notes.push_back({e.offset, e.a});
+        pending.clear();
+        log->push_back(p); pos += out.frames;
+        for (std::size_t c = 0; c < out.channels; ++c) for (std::size_t i = 0; i < out.frames; ++i) out.channel(c)[i] = 0.f;
+      }
+    };
+    std::vector<Synth::Piece> log;
+    Session s(48000, 2, 256); const TrackId t = s.addTrack("Syn", false);
+    plugins::PluginDescriptor d; d.name = "Synth"; d.format = plugins::Format::Builtin;
+    CHECK(s.addInsert(t, std::make_unique<Synth>(&log), d));
+    music::MidiClip c; c.notes.push_back({60, 100.0 / 24000.0, 0.5, 100});   // 120 bpm: one beat = 24000 frames, so this is frame 100
+    c.notes.push_back({64, 200.0 / 24000.0, 0.5, 100});
+    s.track(t)->source->setMidiSequence(session::buildMidiSequence(c, 120.0, 48000));
+    CHECK(s.setParamAutomation(t, 0, 0, {{0, 0.0f}, {48000, 1.0f}}));
+    Rig r(s); r.e->transport().play(); r.run(256, 256);
+    std::size_t total = 0, n60 = 0, n64 = 0; long at60 = -1, at64 = -1; bool varied = false; double first = log.empty() ? 0 : log[0].v;
+    for (auto& p : log) {
+      total += p.frames;
+      for (auto& nt : p.notes) { if (nt.second == 60) { ++n60; at60 = static_cast<long>(p.start + nt.first); } if (nt.second == 64) { ++n64; at64 = static_cast<long>(p.start + nt.first); } }
+      if (std::fabs(p.v - first) > 1e-4) varied = true;
+    }
+    std::printf("synth pieces: %zu, note 60 at %ld, note 64 at %ld\n", log.size(), at60, at64);
+    CHECK(total == 256 && log.size() >= 4);                 // cut into pieces, every frame once
+    CHECK(n60 == 1 && n64 == 1);                            // every note delivered exactly once
+    CHECK(std::labs(at60 - 100) <= 1 && std::labs(at64 - 200) <= 1);   // on its own frame
+    CHECK(varied);                                          // the parameter moved between pieces
   }
   {  // save, load, duplicate
     auto m = make(); Session& s = *m.s;

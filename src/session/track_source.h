@@ -109,6 +109,9 @@ class TrackSource : public Processor {
   void removeSplitHost(plugins::IPluginInstance* inst) { splitHosts_.erase(std::remove(splitHosts_.begin(), splitHosts_.end(), inst), splitHosts_.end()); }
   // Fills `out` with sorted offsets 0 .. frames (both included) where the plug-in's lanes need a new value; returns how many.
   // 0 when nothing is automated or the transport is stopped. `chunkStart` is the timeline frame of the block's first sample.
+  // The MIDI of the block just dispatched (sorted by offset). Instruments wrapped by AutomatedEffect read it here, so they can be run in pieces
+  // with each event inside its own piece; the other instruments are handed the events directly. Audio thread, after this source's process().
+  const MidiEvent* blockMidi(std::size_t& n) const { n = blockMidiN_; return blockMidi_; }
   std::size_t autoBoundariesFor(const plugins::IPluginInstance* inst, std::size_t frames, std::size_t* out, std::size_t maxOut, std::int64_t& chunkStart);
   void autoApplyFor(plugins::IPluginInstance* inst, std::int64_t atFrame);
 
@@ -123,6 +126,8 @@ class TrackSource : public Processor {
   std::vector<std::shared_ptr<const ParamAutomation>> autoRetired_;   // keeps old snapshots alive so the audio thread never frees one
   std::atomic<bool> autoDirty_{false};
   std::vector<plugins::IPluginInstance*> splitHosts_;
+  MidiEvent blockMidi_[kMaxMidiPerBlock];
+  std::size_t blockMidiN_ = 0;
   bool isSplitHost(const plugins::IPluginInstance* i) const { return std::find(splitHosts_.begin(), splitHosts_.end(), i) != splitHosts_.end(); }
   bool autoWasPlaying_ = false;
   void dispatchMidi(std::size_t frames);

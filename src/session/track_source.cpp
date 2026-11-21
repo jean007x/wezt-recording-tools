@@ -193,6 +193,7 @@ bool TrackSource::auditionPitchBend(int value14) {
 void TrackSource::auditionAllOff() { audPanic_.store(true, std::memory_order_release); }
 
 void TrackSource::dispatchMidi(std::size_t frames) {
+  blockMidiN_ = 0;
   if (midiLock_.test_and_set(std::memory_order_acquire)) return;  // an edit is in progress: try again next block
   struct Release { std::atomic_flag& f; ~Release() { f.clear(std::memory_order_release); } } release{midiLock_};
   const bool playing = ctx_->playing;
@@ -232,7 +233,10 @@ void TrackSource::dispatchMidi(std::size_t frames) {
   }
   if (audPanic_.exchange(false, std::memory_order_acq_rel)) { MidiEvent off; off.type = MidiEvent::AllNotesOff; add(off); }
   if (n == 0) return;
-  for (auto* t : targets_) t->handleMidi(buf, n);
+  std::stable_sort(buf, buf + n, [](const MidiEvent& x, const MidiEvent& y) { return x.offset < y.offset; });
+  std::copy(buf, buf + n, blockMidi_);
+  blockMidiN_ = n;
+  for (auto* t : targets_) if (!isSplitHost(t)) t->handleMidi(buf, n);
 }
 
 void TrackSource::setParamAutomation(std::shared_ptr<const ParamAutomation> a) {

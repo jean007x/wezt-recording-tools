@@ -1,7 +1,7 @@
 // Wraps an effect plug-in so its automation moves inside the block instead of once per block.
 // Each audio block is cut where an automation lane has a breakpoint, and at most every
 // kMaxSegment frames while a lane is moving; every piece gets the parameter value for its own middle.
-// Instruments are not wrapped (their MIDI is timed inside the whole block).
+// Instruments are wrapped too: the track's MIDI for the block is cut up with it, so every note still starts on its own frame.
 #pragma once
 #include <cstddef>
 #include <memory>
@@ -23,6 +23,7 @@ class AutomatedEffect final : public Processor {
   std::size_t latencySamples() const override { return inner_->latencySamples(); }
   static constexpr std::size_t kMaxSegment = 32;
   static constexpr std::size_t kMaxBoundaries = 512;
+  static constexpr std::size_t kMaxPieceMidi = 256;
  private:
   std::unique_ptr<plugins::IPluginInstance> inner_;
   TrackSource* source_;
