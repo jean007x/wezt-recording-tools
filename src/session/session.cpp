@@ -431,6 +431,26 @@ bool Session::setParamAutomation(TrackId id, std::size_t insert, unsigned paramI
   return true;
 }
 
+bool Session::setStripLane(TrackId id, int which, const std::vector<AutomationPoint>& points) {
+  Track* t = track(id);
+  if (!t || which < 0 || which > 2) return false;
+  AutomationLane& l = which == 0 ? t->strip->volumeLane() : which == 1 ? t->strip->panLane() : t->strip->muteLane();
+  l.clear();
+  for (const auto& p : points) l.add(p.frame, which == 0 ? std::clamp(p.value, -90.f, 12.f) : which == 1 ? std::clamp(p.value, -1.f, 1.f) : (p.value >= 0.5f ? 1.f : 0.f));
+  return true;
+}
+
+bool Session::setStripLaneUndoable(edit::UndoStack& undo, TrackId id, int which, const std::vector<AutomationPoint>& points, const std::string& label, const std::string& mergeKey) {
+  Track* t = track(id);
+  if (!t || which < 0 || which > 2) return false;
+  const std::vector<AutomationPoint> before = (which == 0 ? t->strip->volumeLane() : which == 1 ? t->strip->panLane() : t->strip->muteLane()).points();
+  if (!setStripLane(id, which, points)) return false;
+  const std::vector<AutomationPoint> after = (which == 0 ? t->strip->volumeLane() : which == 1 ? t->strip->panLane() : t->strip->muteLane()).points();
+  if (before == after) return true;
+  undo.record({label, [this, id, which, before] { setStripLane(id, which, before); }, [this, id, which, after] { setStripLane(id, which, after); }, mergeKey});
+  return true;
+}
+
 bool Session::setParamAutomationUndoable(edit::UndoStack& undo, TrackId id, std::size_t insert, unsigned paramId, const std::vector<AutomationPoint>& points, const std::string& label, const std::string& mergeKey) {
   std::vector<AutomationPoint> before; if (const AutomationLane* l = paramAutomation(id, insert, paramId)) before = l->points();
   if (!setParamAutomation(id, insert, paramId, points)) return false;

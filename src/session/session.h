@@ -142,6 +142,10 @@ class Session {
   bool reenablePlugin(TrackId t, std::size_t insert); // clears the quarantine
   bool addInsert(TrackId t, std::unique_ptr<plugins::IPluginInstance> plugin, const plugins::PluginDescriptor& d, int position = -1);
   bool removeInsert(TrackId t, std::size_t index);
+  // A track's volume (dB), pan (-1..1) or mute (0/1) lane: which = 0, 1, 2. Replaces the lane. Edit only while the transport is stopped
+  // (the audio thread reads these lanes while playing). The Undoable form records a step that puts the old points back.
+  bool setStripLane(TrackId t, int which, const std::vector<AutomationPoint>& points);
+  bool setStripLaneUndoable(edit::UndoStack& undo, TrackId t, int which, const std::vector<AutomationPoint>& points, const std::string& label, const std::string& mergeKey = {});
   // Plugin parameter automation. Points are (frame, normalized value 0..1). Replaces the lane; no points removes it.
   // False when the track, insert or parameter does not exist or the plugin is offline.
   bool setParamAutomation(TrackId t, std::size_t insert, unsigned paramId, const std::vector<AutomationPoint>& points);

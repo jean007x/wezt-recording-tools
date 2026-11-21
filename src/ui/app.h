@@ -271,7 +271,8 @@ class App {
   std::set<session::TrackId> hidden_;
   int firstTrack_ = 0, trackLevel_ = 1, gridIdx_ = 2, nudgeIdx_ = 3;
   float waveScale_ = 1.f, viewWidthPx_ = 1000.f;
-  bool showWaves_ = true, showMixFloat_ = false;
+  bool showWaves_ = true, showMixFloat_ = false, showVolAuto_ = false;   // showVolAuto_: draw/edit volume automation on the timeline
+  int volDrag_ = -1; int volDragTrack_ = -1;
   struct ZoomPreset { bool set = false; float fpp = 200.f; double scroll = 0.0; } zoomPresets_[5];
   std::string sessionName_ = "Untitled Session";
 

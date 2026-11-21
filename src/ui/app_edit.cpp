@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 
+#include <limits>
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
@@ -525,6 +526,9 @@ void App::drawEdit() {
         if (sBtn("wave", showWaves_, 0xFF8A8C92, 36)) showWaves_ = !showWaves_;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Show waveforms or plain blocks");
         ImGui::SameLine(0, 2);
+        if (sBtn("vol", showVolAuto_, 0xFF3FA84A, 30)) showVolAuto_ = !showVolAuto_;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Volume automation on the timeline: click to add a point, drag to move it, right-click to delete (while stopped)");
+        ImGui::SameLine(0, 2);
         const bool au = t->strip->automationOn();
         if (sBtn(au ? "read" : "off", au, 0xFF3FA84A, 40)) t->strip->setAutomationOn(!au);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Automation: read or off");
@@ -642,6 +646,49 @@ void App::drawEdit() {
         dl->AddLine(ImVec2(xj - w, a.y + 4), ImVec2(xj + w, b.y - 4), col(1.f, 1.f, 1.f, 0.9f), 1.5f);
       }
     }
+    if (showVolAuto_) {   // the track's volume lane, drawn over its clips; editable while the song is stopped
+      session::AutomationLane& vl = t->strip->volumeLane();
+      const float dbLo = -60.f, dbHi = 12.f, top = a.y + 6.f, bot = b.y - 6.f;
+      auto Y = [&](float db) { return bot - (std::clamp(db, dbLo, dbHi) - dbLo) / (dbHi - dbLo) * (bot - top); };
+      auto dbAt = [&](float yy) { return std::clamp(dbLo + (bot - yy) / (bot - top) * (dbHi - dbLo), dbLo, dbHi); };
+      dl->AddRectFilled(a, b, col(0.f, 0.f, 0.f, 0.35f));
+      dl->AddLine(ImVec2(a.x, Y(0.f)), ImVec2(b.x, Y(0.f)), col(1.f, 1.f, 1.f, 0.12f));
+      const bool stopped = !engine_->transport().playing();
+      std::vector<session::AutomationPoint> pts = vl.points();
+      const bool over = ImGui::IsWindowHovered() && mouse.x >= a.x && mouse.x < b.x && mouse.y >= a.y && mouse.y < b.y && stopped;
+      auto nearest = [&]() { int best = -1; float bd = 10.f; for (std::size_t i = 0; i < pts.size(); ++i) { const float d = std::hypot(frameToX(pts[i].frame) - mouse.x, Y(pts[i].value) - mouse.y); if (d < bd) { bd = d; best = static_cast<int>(i); } } return best; };
+      const std::string key = "voldraw:" + std::to_string(id);
+      const std::int64_t mf = std::max<std::int64_t>(0, snap(xToFrame(mouse.x)));
+      if (over && ImGui::IsMouseClicked(0)) {
+        selTrack_ = id; volDragTrack_ = id; volDrag_ = nearest();
+        if (volDrag_ < 0) {
+          auto it = std::lower_bound(pts.begin(), pts.end(), mf, [](const session::AutomationPoint& p0, std::int64_t f) { return p0.frame < f; });
+          if (it == pts.end() || it->frame != mf) {
+            volDrag_ = static_cast<int>(it - pts.begin());
+            pts.insert(it, session::AutomationPoint{mf, dbAt(mouse.y)});
+            session_->setStripLaneUndoable(undo_, id, 0, pts, "Draw volume automation");
+          }
+        }
+      } else if (volDrag_ >= 0 && volDragTrack_ == id && ImGui::IsMouseDown(0) && volDrag_ < static_cast<int>(pts.size()) && stopped) {
+        const std::size_t i = static_cast<std::size_t>(volDrag_);
+        const std::int64_t lo = i > 0 ? pts[i - 1].frame + 1 : 0, hi = i + 1 < pts.size() ? pts[i + 1].frame - 1 : std::numeric_limits<std::int64_t>::max();
+        const session::AutomationPoint np{std::clamp(mf, lo, std::max(lo, hi)), dbAt(mouse.y)};
+        if (!(pts[i] == np)) { pts[i] = np; session_->setStripLaneUndoable(undo_, id, 0, pts, "Move volume automation point", key); }
+      } else if (volDragTrack_ == id && !ImGui::IsMouseDown(0)) volDrag_ = -1;
+      if (over && ImGui::IsMouseClicked(1)) {
+        const int i = nearest();
+        if (i >= 0) { pts.erase(pts.begin() + i); session_->setStripLaneUndoable(undo_, id, 0, pts, "Delete volume automation point"); }
+      }
+      const auto& now = vl.points();
+      if (!now.empty()) {
+        std::vector<ImVec2> pl;
+        pl.push_back(ImVec2(a.x, Y(now.front().value)));
+        for (const auto& pt : now) pl.push_back(ImVec2(frameToX(pt.frame), Y(pt.value)));
+        pl.push_back(ImVec2(b.x, Y(now.back().value)));
+        dl->AddPolyline(pl.data(), static_cast<int>(pl.size()), col(0.35f, 0.9f, 0.5f), 0, 2.f);
+        for (const auto& pt : now) dl->AddCircleFilled(ImVec2(frameToX(pt.frame), Y(pt.value)), 3.5f, col(0.7f, 1.f, 0.78f));
+      } else dl->AddText(ImVec2(a.x + 8.f, a.y + 4.f), col(0.8f, 0.8f, 0.85f, 0.7f), stopped ? "Click to draw volume automation" : "Stop the song to edit volume automation");
+    }
     dl->PopClipRect();
     y += laneH;
     ++rowIndex;
@@ -744,7 +791,7 @@ void App::drawEdit() {
   };
   const float mkTop = origin.y + rowRuler * 2.f;
   if (hovered && ImGui::IsMouseDoubleClicked(0) && mouse.y >= mkTop && mouse.y < origin.y + rulerH) { addMarker(snap(xToFrame(mouse.x))); }
-  else if (hovered && ImGui::IsMouseClicked(0)) {
+  else if (hovered && ImGui::IsMouseClicked(0) && !(showVolAuto_ && mouse.y >= lanesTop)) {
     const std::int64_t f = xToFrame(mouse.x);
     const int row = rowAt(mouse.y);
     const bool inRuler = mouse.y < lanesTop;

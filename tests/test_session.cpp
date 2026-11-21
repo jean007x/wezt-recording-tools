@@ -13,6 +13,7 @@
 #include "audio/audio_device.h"
 #include "engine/delay_line.h"
 #include "io/wav.h"
+#include "edit/undo.h"
 #include "session/session.h"
 
 using namespace wezt;
@@ -687,7 +688,27 @@ static void testPluginFaultReport() {
   CHECK(!s.reenablePlugin(t, 5));
 }
 
+static void testStripLaneEdit() {
+  Session s(48000, 2, 128);
+  const auto t = s.addTrack("A", true);
+  edit::UndoStack undo;
+  const std::vector<session::AutomationPoint> pts{{0, -6.f}, {48000, 3.f}, {96000, 99.f}};   // the last one is above the ceiling
+  CHECK(s.setStripLaneUndoable(undo, t, 0, pts, "draw"));
+  const auto& lane = s.track(t)->strip->volumeLane();
+  CHECK(lane.points().size() == 3);
+  CHECK(lane.points()[2].value <= 12.f);                 // clamped
+  CHECK(std::fabs(lane.valueAt(24000, 0.f) - (-1.5f)) < 1e-4f);
+  CHECK(undo.canUndo());
+  undo.undo();
+  CHECK(lane.points().empty());                          // undo puts the old (empty) lane back
+  undo.redo();
+  CHECK(lane.points().size() == 3);
+  CHECK(!s.setStripLane(t, 7, pts) && !s.setStripLane(99, 0, pts));
+  CHECK(s.setStripLane(t, 2, {{10, 0.7f}}) && s.track(t)->strip->muteLane().points()[0].value == 1.f);   // mute lane is on/off
+}
+
 int main() {
+  testStripLaneEdit();
   testPluginFaultReport();
   testPlaybackAndPan();
   testMuteSolo();
