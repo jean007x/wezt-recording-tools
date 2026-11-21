@@ -334,6 +334,21 @@ void testFaultContainment() {
 
 static double energy(const std::vector<float>& v, std::size_t a, std::size_t b) { double e = 0; for (std::size_t i = a; i < b && i < v.size(); ++i) e += static_cast<double>(v[i]) * v[i]; return e; }
 
+static void testQuickPunch() {
+  Rig r(128); CHECK(r.start(0, 2));
+  r.e->transport().punchIn();
+  CHECK(!r.e->transport().recording());                    // not rolling: nothing to punch into
+  r.e->transport().play();
+  runSizes(r, 2, std::vector<unsigned>(10, 128));
+  r.e->transport().punchIn();
+  runSizes(r, 2, std::vector<unsigned>(10, 128));
+  CHECK(r.e->transport().playing() && r.e->transport().recording());
+  const auto at = r.e->transport().position();
+  r.e->transport().punchOut();
+  runSizes(r, 2, std::vector<unsigned>(10, 128));
+  CHECK(r.e->transport().playing() && !r.e->transport().recording() && r.e->transport().position() > at);   // the song never stopped
+}
+
 static void testPreRoll() {
   {  // record from 3 s with a 1 s pre-roll: the song rolls in from 2 s, recording switches on exactly at 3 s
     Rig r(128); CHECK(r.start(0, 2));
@@ -433,6 +448,7 @@ static void testMetronomeAndCountOff() {
 int main() {
   testMetronomeAndCountOff();
   testPreRoll();
+  testQuickPunch();
   testFaultContainment();
   testNonFiniteOutput();
   testVariableCallbackSizes();

@@ -27,7 +27,7 @@ table, but the layout, drawing, colours and names are our own (see `CLEAN_ROOM_P
 Everything in `src/ui/commands.cpp`. Open View > Keyboard shortcuts for the live table. Commands that are
 not implemented yet appear dimmed and say so in the status bar instead of doing nothing. Not
 implemented: undo/redo, cut/copy/paste, clip mute, strip silence, consolidate, scrub, pencil, metronome,
-QuickPunch, grouping, commit/bounce track.
+grouping, commit/bounce track.
 
 ## Building
 

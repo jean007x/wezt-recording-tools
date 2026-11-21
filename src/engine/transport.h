@@ -18,6 +18,9 @@ class Transport {
     playing_.store(true, std::memory_order_release);
     recording_.store(true, std::memory_order_release);
   }
+  // QuickPunch: switch recording on or off while the song keeps rolling.
+  void punchIn() { if (playing()) recording_.store(true, std::memory_order_release); }
+  void punchOut() { recording_.store(false, std::memory_order_release); }
   void locate(std::int64_t frame) { locateRequest_.store(frame < 0 ? 0 : frame, std::memory_order_release); }
   void setLoop(std::int64_t startFrame, std::int64_t endFrame) {
     // Stop honouring the old loop while the pair is being replaced, so the audio thread never sees

@@ -238,6 +238,8 @@ class App {
   std::string voiceDir() const;
   void drawScoreWindow();
   void watchEdits();
+  void commitRecordedTakes();   // recorded audio becomes clips once the transport has stopped
+  bool wasRecording_ = false, takesPending_ = false;
   bool sessionCommandFromText(const std::string& text, std::string& reply);
   template <class F> void forGroup(session::TrackId t, F f);
   std::int64_t nudgeFrames() const;

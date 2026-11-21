@@ -169,7 +169,7 @@ bool App::isImplemented(Command c) const {
   switch (c) {
     case Command::PlayStop: case Command::Record: case Command::LoopPlayback: case Command::ReturnToStart: case Command::GoToEnd:
     case Command::Rewind: case Command::FastForward:
-    case Command::Metronome: case Command::CountOff: case Command::PreRoll:
+    case Command::Metronome: case Command::CountOff: case Command::PreRoll: case Command::QuickPunch:
     case Command::ModeShuffle: case Command::ModeSlip: case Command::ModeSpot: case Command::ModeGrid:
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
     case Command::CycleEditModes: case Command::CycleEditTools:
@@ -201,6 +201,15 @@ void App::execute(Command c) {
       const int cur = engine_->metronome().countOffBars(), next = cur == 0 ? 1 : cur == 1 ? 2 : cur == 2 ? 4 : 0;
       engine_->metronome().setCountOffBars(next);
       setStatus(next ? "Count-off before recording: " + std::to_string(next) + (next == 1 ? " bar" : " bars") : std::string("Count-off off"));
+      break;
+    }
+    case Command::QuickPunch: {
+      bool any = false;
+      for (auto id : session_->trackIds()) any = any || session_->track(id)->source->armed();
+      if (!tr.playing()) { setStatus("QuickPunch works while the song is playing: press play first"); break; }
+      if (tr.recording()) { tr.punchOut(); setStatus("Punched out"); }
+      else if (!any) setStatus("Arm a track (R) before punching in");
+      else { tr.punchIn(); setStatus("Punched in"); }
       break;
     }
     case Command::PreRoll: {
@@ -490,6 +499,21 @@ void App::updateMeters() {
   for (auto b : session_->busIds()) feed(session_->bus(b)->strip);
 }
 
+// The disk recorder writes takes while the transport records; once it has stopped they are put on the tracks as clips (one undo step
+// through watchEdits). Done only while stopped, because a track's structure may not change under a running song.
+void App::commitRecordedTakes() {
+  const bool rec = engine_->transport().recording();
+  if (wasRecording_ && !rec) takesPending_ = true;
+  wasRecording_ = rec;
+  if (!takesPending_ || engine_->transport().playing() || engine_->countingOff()) return;
+  takesPending_ = false;
+  std::string err;
+  int added = 0;
+  WEZT_PAUSED(added = session_->commitTakes(&err));
+  if (!err.empty()) setStatus("Recording: " + err);
+  else if (added > 0) setStatus(added == 1 ? "Recorded 1 take" : "Recorded " + std::to_string(added) + " takes");
+}
+
 void App::frame() {
   watchAudioDevice();
   watchPluginFaults();
@@ -507,6 +531,7 @@ void App::frame() {
   beatsPerBar_ = std::clamp(beatsPerBar_, 1, 12);
   engine_->metronome().setBeatsPerBar(beatsPerBar_);
   handleKeys();
+  commitRecordedTakes();
   watchEdits();
   drawMenu();
   const ImGuiViewport* vp = ImGui::GetMainViewport();
