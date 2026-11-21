@@ -312,7 +312,7 @@ class App {
   // piano roll view and drag state
   float rollPxPerBeat_ = 64.f, rollRowH_ = 14.f, rollScrollBeat_ = 0.f; int rollTopPitch_ = 96, rollGridIdx_ = 2; bool rollDraw_ = true;
   int rollDrag_ = 0; double rollDragBeat_ = 0; int rollDragPitch_ = 0; edit::PianoRoll rollStart_; float rollBandX_ = 0, rollBandY_ = 0;
-  bool showPluginBrowser_ = false, pbScanned_ = false;   // the plug-in browser window
+  bool showPluginBrowser_ = false, pbScanned_ = false, pbSafe_ = false;   // the plug-in browser window
   std::vector<plugins::LibraryEntry> pbEntries_;
   std::string pbFilter_, pbMessage_;
   int ppTrack_ = -1, ppInsert_ = 0, ppParam_ = -1, ppDrag_ = -1; bool ppWrite_ = false, ppWasPlaying_ = false;   // Plugin Parameters window

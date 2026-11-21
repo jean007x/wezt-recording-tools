@@ -10,6 +10,9 @@
 #include "misc/cpp/imgui_stdlib.h"
 #include "ui/app.h"
 #include "ui/insert_factory.h"
+#if defined(WEZT_HAS_BRIDGE)
+#include "plugins/bridge/bridge_host.h"
+#endif
 
 namespace wezt::ui {
 
@@ -35,6 +38,10 @@ void App::drawPluginBrowser() {
   ImGui::SameLine();
   const auto* tr = session_->track(selTrack_);
   ImGui::TextDisabled("%s", tr ? ("adds to: " + tr->name).c_str() : "select a track first");
+  if (sandboxAvailable()) {
+    ImGui::Checkbox("Safe mode: run the plug-in in its own process (effects only)", &pbSafe_);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("If the plug-in crashes or hangs, only its own process stops: the sound of that insert goes silent and Wezt keeps running.\nInstruments (MIDI) do not work in safe mode yet.");
+  }
   ImGui::TextDisabled("%s", pbMessage_.c_str());
   if (ImGui::BeginTable("##pbt", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable, ImVec2(0, ImGui::GetContentRegionAvail().y))) {
     ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 2.f);
@@ -57,10 +64,13 @@ void App::drawPluginBrowser() {
       ImGui::BeginDisabled(!can);
       if (ImGui::Button(("Add##pb" + std::to_string(row)).c_str())) {
         std::string err;
-        std::unique_ptr<plugins::IPluginInstance> inst = makeInsert(e.plugin, &err);
+        plugins::PluginDescriptor want = e.plugin;
+        want.sandbox = pbSafe_ && sandboxAvailable() && want.format == plugins::Format::VST3;
+        std::unique_ptr<plugins::IPluginInstance> inst = makeInsert(want, &err);
         if (!inst) setStatus("Could not load " + e.plugin.name + ": " + err);
         else {
           plugins::PluginDescriptor d = e.plugin;
+          d.sandbox = pbSafe_ && sandboxAvailable() && d.format == plugins::Format::VST3;
           const bool was = deviceRunning_;
           if (was) device_->stop();
           const bool ok = session_->addInsert(selTrack_, std::move(inst), d);
@@ -106,6 +116,13 @@ void App::drawPluginParamsWindow() {
     if (ImGui::Button("Re-enable this plugin")) { session_->reenablePlugin(ppTrack_, f.insert); setStatus("Re-enabled " + f.name + ". It is muted again if it keeps producing invalid audio."); }
     ImGui::Separator();
   }
+#if defined(WEZT_HAS_BRIDGE)
+  if (auto* br = dynamic_cast<plugins::BridgedPluginInstance*>(slot.instance.get())) {   // a plug-in in safe mode: say how its process is doing
+    if (br->crashed()) ImGui::TextColored(ImVec4(1.f, 0.4f, 0.3f, 1.f), "Safe mode: this plug-in's process stopped, so the insert is silent (%u blocks replaced). Remove it and add it again to restart it.", br->droppedBlocks());
+    else if (!br->ready() && !br->lastError().empty()) ImGui::TextColored(ImVec4(1.f, 0.55f, 0.25f, 1.f), "Safe mode: %s", br->lastError().c_str());
+    else ImGui::TextDisabled("Safe mode: running in its own process");
+  }
+#endif
   if (!slot.instance) { ImGui::TextDisabled("This plugin is not available (offline), so its parameters cannot be shown."); ImGui::End(); return; }
   const bool canAuto = slot.instance->supportsAutomation();
   const bool playing = engine_->transport().playing();

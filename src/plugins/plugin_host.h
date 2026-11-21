@@ -17,6 +17,7 @@ struct PluginDescriptor {
   std::string name, vendor, path;
   Format format = Format::VST3;
   bool is32bit = false;
+  bool sandbox = false;  // run in the separate wezt-bridge process, so a crash of the plug-in cannot take Wezt down (effects only)
   int bitness = 0;  // 32, 64, or 0 when unknown (read from the file header, never by loading it)
   std::string note;
 };

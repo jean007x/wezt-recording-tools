@@ -440,7 +440,7 @@ static void testSaveLoad() {
     s.setSendMute(t, 0, true);
     CHECK(s.setTrackOutput(t2, fx));
     auto plugin = std::make_unique<FakePlugin>(0.25f, 0);
-    CHECK(s.addInsert(t, std::move(plugin), fakeDesc()));
+    { auto d = fakeDesc(); d.sandbox = true; CHECK(s.addInsert(t, std::move(plugin), d)); }   // safe-mode flag must survive a save
     s.setTempo(93.5); s.setBeatsPerBar(7);
     std::string err;
     const int id = s.addClipFromFile(t, (dir / "Audio Files" / "gtr.wav").string(), 480, &err);
@@ -475,6 +475,7 @@ static void testSaveLoad() {
     CHECK(loaded->trackCount() == 2);
     const auto ids = loaded->trackIds();
     Track& t = *loaded->track(ids[0]);
+    CHECK(!t.inserts.empty() && t.inserts[0].descriptor.sandbox);
     CHECK(t.name == "Lead Gtr = 2 %" && t.mono && t.solo);
     NEAR(t.strip->gainDb(), -4.5, 1e-6);
     NEAR(t.strip->pan(), 0.25, 1e-6);

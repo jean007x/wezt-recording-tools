@@ -72,7 +72,7 @@ jobs:
           git clone --depth 1 --branch 1.2.3 https://github.com/free-audio/clap.git "$RUNNER_TEMP/clap"
       - name: Configure
         shell: bash
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWEZT_ENABLE_VST3=ON -DWEZT_VST3_SDK_DIR="$RUNNER_TEMP/vst3sdk" -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DWEZT_ENABLE_CLAP=ON -DWEZT_CLAP_DIR="$RUNNER_TEMP/clap" -DWEZT_BUILD_UI=ON -DWEZT_IMGUI_DIR="$RUNNER_TEMP/imgui" -DWEZT_GLFW_DIR="$RUNNER_TEMP/glfw" -DGLFW_BUILD_WAYLAND=OFF
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWEZT_ENABLE_VST3=ON -DWEZT_VST3_SDK_DIR="$RUNNER_TEMP/vst3sdk" -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DWEZT_ENABLE_CLAP=ON -DWEZT_CLAP_DIR="$RUNNER_TEMP/clap" -DWEZT_ENABLE_BRIDGE=ON -DWEZT_BUILD_UI=ON -DWEZT_IMGUI_DIR="$RUNNER_TEMP/imgui" -DWEZT_GLFW_DIR="$RUNNER_TEMP/glfw" -DGLFW_BUILD_WAYLAND=OFF
       - name: Build
         run: cmake --build build --config Release -j 3
       - name: UI test

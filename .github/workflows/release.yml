@@ -33,8 +33,8 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWEZT_ENABLE_VST3=ON -DWEZT_VST3_SDK_DIR="$RUNNER_TEMP/vst3sdk" -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DWEZT_ENABLE_CLAP=ON -DWEZT_CLAP_DIR="$RUNNER_TEMP/clap" -DWEZT_BUILD_UI=ON -DWEZT_IMGUI_DIR="$RUNNER_TEMP/imgui" -DWEZT_GLFW_DIR="$RUNNER_TEMP/glfw" -DGLFW_BUILD_WAYLAND=OFF -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-          cmake --build build --config Release -j 3 --target wezt-studio wezt-mcp wezt_voice_takes
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWEZT_ENABLE_VST3=ON -DWEZT_VST3_SDK_DIR="$RUNNER_TEMP/vst3sdk" -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DWEZT_ENABLE_CLAP=ON -DWEZT_CLAP_DIR="$RUNNER_TEMP/clap" -DWEZT_ENABLE_BRIDGE=ON -DWEZT_BUILD_UI=ON -DWEZT_IMGUI_DIR="$RUNNER_TEMP/imgui" -DWEZT_GLFW_DIR="$RUNNER_TEMP/glfw" -DGLFW_BUILD_WAYLAND=OFF -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          cmake --build build --config Release -j 3 --target wezt-studio wezt-bridge wezt-mcp wezt_voice_takes
       - name: Check the binaries (macOS minimum version and architectures, Windows GUI subsystem)
         shell: bash
         run: |
@@ -53,7 +53,7 @@ jobs:
         run: |
           NAME="wezt-recording-tools-${{ runner.os }}"
           mkdir -p "dist/$NAME"
-          for t in wezt-studio wezt-mcp wezt_voice_takes; do
+          for t in wezt-studio wezt-bridge wezt-mcp wezt_voice_takes; do
             f=$(find build -type f \( -name "$t" -o -name "$t.exe" \) | head -1)
             if [ -n "$f" ]; then cp "$f" "dist/$NAME/"; else echo "missing $t"; exit 1; fi
           done

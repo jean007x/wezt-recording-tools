@@ -742,7 +742,7 @@ bool Session::save(const std::string& path, std::string* error) {
     for (auto& in : t.inserts) {
       const auto state = in.instance ? in.instance->saveState() : in.offlineState;
       o << "insert format=" << static_cast<int>(in.descriptor.format) << " name=" << enc(in.descriptor.name) << " vendor=" << enc(in.descriptor.vendor)
-        << " path=" << enc(in.descriptor.path) << " bits=" << in.descriptor.bitness << " state=" << hex(state) << "\n";
+        << " path=" << enc(in.descriptor.path) << " bits=" << in.descriptor.bitness << " sandbox=" << (in.descriptor.sandbox ? 1 : 0) << " state=" << hex(state) << "\n";
       for (const auto& pl : in.paramLanes) {   // plugin parameter automation: normalized 0..1
         if (pl.lane.empty()) continue;
         o << "plane id=" << pl.id;
@@ -902,6 +902,7 @@ std::unique_ptr<Session> Session::load(const std::string& path, const InsertFact
       d.name = str(l.kv, "name"); d.vendor = str(l.kv, "vendor"); d.path = str(l.kv, "path");
       d.format = static_cast<plugins::Format>(static_cast<int>(num(l.kv, "format", 0)));
       d.bitness = static_cast<int>(num(l.kv, "bits", 0));
+      d.sandbox = num(l.kv, "sandbox", 0) != 0;
       std::vector<std::uint8_t> state;
       if (!unhex(l.kv.count("state") ? l.kv.at("state") : "-", state)) { state.clear(); s->warnings_.push_back("plugin \"" + d.name + "\": saved settings are damaged"); }
       std::unique_ptr<plugins::IPluginInstance> inst = factory ? factory(d) : nullptr;
