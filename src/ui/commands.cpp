@@ -162,6 +162,7 @@ Keymap Keymap::protoolsDefaults() {
   b(Key::Kp6, 0, C::QuickPunch);
   b(Key::Kp7, 0, C::Metronome);
   b(Key::Kp8, 0, C::CountOff);
+  b(Key::Kp9, 0, C::PreRoll);
   // Edit modes and tools
   b(Key::F1, 0, C::ModeShuffle);  b(Key::D1, kAlt, C::ModeShuffle);
   b(Key::F2, 0, C::ModeSlip);     b(Key::D2, kAlt, C::ModeSlip);
