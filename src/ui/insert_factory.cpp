@@ -30,7 +30,7 @@ std::string bridgeHelperPath() {
   char buf[4096]; uint32_t sz = sizeof buf; if (_NSGetExecutablePath(buf, &sz) == 0) exe = fs::path(buf);
   const char* name = "wezt-bridge";
 #else
-  std::error_code ec; exe = fs::read_symlink("/proc/self/exe", ec);
+  std::error_code ec0; exe = fs::read_symlink("/proc/self/exe", ec0);
   const char* name = "wezt-bridge";
 #endif
   if (exe.empty()) return {};
