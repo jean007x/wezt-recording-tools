@@ -362,6 +362,18 @@ static void testMetronomeAndCountOff() {
     CHECK(!r.e->countingOff() && r.e->transport().playing() && r.e->transport().recording());
     CHECK(r.e->transport().position() < 20000);                        // the song started at the end of the count, not before
   }
+  {  // 3 beats to the bar: the accent comes every third beat and a one-bar count-off is three beats long
+    Rig r(128); CHECK(r.start(0, 2));
+    r.e->metronome().setTempo(120.0); r.e->metronome().setBeatsPerBar(3); r.e->metronome().setEnabled(true);
+    CHECK(r.e->metronome().countOffFrames(48000.0) == 0);
+    r.e->metronome().setCountOffBars(1);
+    CHECK(r.e->metronome().countOffFrames(48000.0) == 72000);
+    r.e->metronome().setCountOffBars(0);
+    r.e->transport().play();
+    const auto o = runSizes(r, 2, std::vector<unsigned>(1200, 128));   // 153600 frames: beats at 0, 24000, 48000, 72000 ...
+    CHECK(energy(o, 0, 2000) > energy(o, 24000, 26000) && energy(o, 0, 2000) > energy(o, 48000, 50000));
+    CHECK(energy(o, 72000, 74000) > energy(o, 48000, 50000) * 1.2);    // beat 4 = the next bar's first beat
+  }
   {  // cancelling stops the count without starting; no count-off set means an immediate start
     Rig r(128); CHECK(r.start(0, 2));
     r.e->metronome().setCountOffBars(2);

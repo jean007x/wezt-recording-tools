@@ -25,10 +25,10 @@ std::string timecode(std::int64_t frames, double rate) {
   std::snprintf(b, sizeof b, "%d:%02d.%03d", m, static_cast<int>(std::fmod(sec, 60.0)), static_cast<int>(std::fmod(sec * 1000.0, 1000.0)));
   return b;
 }
-std::string barsBeats(std::int64_t frames, double rate, float tempo) {
+std::string barsBeats(std::int64_t frames, double rate, float tempo, int perBar = 4) {
   const double beats = static_cast<double>(frames) / (rate * 60.0 / static_cast<double>(tempo));
   char b[48];
-  std::snprintf(b, sizeof b, "%d| %d| %03d", 1 + static_cast<int>(beats / 4), 1 + static_cast<int>(std::fmod(beats, 4.0)), static_cast<int>(std::fmod(beats, 1.0) * 960.0));
+  std::snprintf(b, sizeof b, "%d| %d| %03d", 1 + static_cast<int>(beats / perBar), 1 + static_cast<int>(std::fmod(beats, static_cast<double>(perBar))), static_cast<int>(std::fmod(beats, 1.0) * 960.0));
   return b;
 }
 std::string clipName(const Clip& c, const std::string& fallback) {
@@ -225,6 +225,10 @@ void App::drawTransport() {
   ImGui::SetNextItemWidth(64);
   ImGui::DragFloat("##tempo", &tempo_, 0.5f, 30.f, 300.f, "%.1f");
   ImGui::SameLine(0, 6);
+  ImGui::SetNextItemWidth(52);
+  ImGui::DragInt("##sig", &beatsPerBar_, 0.1f, 1, 12, "%d/4");
+  if (ImGui::IsItemHovered()) ImGui::SetTooltip("Beats per bar (time signature, quarter-note beats): drag to change");
+  ImGui::SameLine(0, 6);
   if (st::chip("Click", metronome_, blue, ImVec2(46, 26))) execute(Command::Metronome);
   if (ImGui::IsItemHovered()) ImGui::SetTooltip("Metronome: a click on every beat while playing (heard, never recorded)");
   ImGui::SameLine(0, 2);
@@ -244,12 +248,12 @@ void App::drawTransport() {
   if (x + rightW > ws.x) x = std::max(8.f, ws.x - rightW - 8.f);
   ImGui::SetCursorPos(ImVec2(x, 6.f));
   ImGui::BeginGroup();
-  const std::string main = timecode_ ? barsBeats(pos, rate, tempo_) : timecode(pos, rate);
+  const std::string main = timecode_ ? barsBeats(pos, rate, tempo_, beatsPerBar_) : timecode(pos, rate);
   st::lcd(main.c_str(), "000| 0| 000", st::rgba(0.35f, 1.f, 0.45f), 2.0f);
   if (ImGui::IsItemClicked()) timecode_ = !timecode_;
   if (ImGui::IsItemHovered()) ImGui::SetTooltip("Click to swap the main and sub counters");
   ImGui::PushStyleColor(ImGuiCol_Text, st::rgba(0.40f, 0.85f, 0.50f));
-  ImGui::TextUnformatted((timecode_ ? timecode(pos, rate) : barsBeats(pos, rate, tempo_)).c_str());
+  ImGui::TextUnformatted((timecode_ ? timecode(pos, rate) : barsBeats(pos, rate, tempo_, beatsPerBar_)).c_str());
   ImGui::PopStyleColor();
   ImGui::SameLine(0, 10); caption("Cursor");
   ImGui::EndGroup();
@@ -258,7 +262,7 @@ void App::drawTransport() {
   auto row = [&](const char* label, std::int64_t f) {
     caption(label); ImGui::SameLine(46);
     ImGui::PushStyleColor(ImGuiCol_Text, st::rgba(0.55f, 0.95f, 0.62f));
-    ImGui::TextUnformatted(barsBeats(f, rate, tempo_).c_str());
+    ImGui::TextUnformatted(barsBeats(f, rate, tempo_, beatsPerBar_).c_str());
     ImGui::PopStyleColor();
   };
   row("Start", a); row("End", b); row("Length", b - a);
@@ -742,7 +746,7 @@ void App::drawEdit() {
       dl->AddText(ImVec2(x + 3, origin.y + 1), col(0.78f, 0.80f, 0.84f), b);
     }
     // bars | beats
-    const double beatF = rate * 60.0 / static_cast<double>(tempo_), barF = beatF * 4.0;
+    const double beatF = rate * 60.0 / static_cast<double>(tempo_), barF = beatF * static_cast<double>(beatsPerBar_);
     double barStep = 1.0;
     for (double bs : {1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0}) if (bs * barF / fpp >= 46.0) { barStep = bs; break; }
     const double b0 = std::floor(scrollFrames_ / barF / barStep) * barStep;

@@ -441,6 +441,7 @@ static void testSaveLoad() {
     CHECK(s.setTrackOutput(t2, fx));
     auto plugin = std::make_unique<FakePlugin>(0.25f, 0);
     CHECK(s.addInsert(t, std::move(plugin), fakeDesc()));
+    s.setTempo(93.5); s.setBeatsPerBar(7);
     std::string err;
     const int id = s.addClipFromFile(t, (dir / "Audio Files" / "gtr.wav").string(), 480, &err);
     CHECK(id > 0);
@@ -469,6 +470,7 @@ static void testSaveLoad() {
   CHECK(loaded != nullptr);
   if (loaded) {
     CHECK(loaded->warnings().empty());
+    CHECK(std::fabs(loaded->tempo() - 93.5) < 1e-6 && loaded->beatsPerBar() == 7);   // tempo and time signature come back
     CHECK(loaded->sampleRate() == 48000 && loaded->channels() == 2 && loaded->maxBlock() == 256);
     CHECK(loaded->trackCount() == 2);
     const auto ids = loaded->trackIds();

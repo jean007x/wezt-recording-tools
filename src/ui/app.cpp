@@ -488,8 +488,16 @@ void App::frame() {
   updateMeters();
   syncLiveMidi();
   for (session::TrackId id : session_->trackIds()) if (instruments::Sampler* sm = samplerOn(id)) sm->setTempo(static_cast<double>(tempo_));
+  if (tempoSession_ != session_.get()) {   // a different session (opened or new): take its tempo and time signature
+    tempoSession_ = session_.get();
+    tempo_ = static_cast<float>(session_->tempo()); beatsPerBar_ = session_->beatsPerBar();
+  } else {
+    session_->setTempo(static_cast<double>(tempo_)); session_->setBeatsPerBar(beatsPerBar_);
+  }
   engine_->metronome().setTempo(static_cast<double>(tempo_));
   engine_->metronome().setEnabled(metronome_);
+  beatsPerBar_ = std::clamp(beatsPerBar_, 1, 12);
+  engine_->metronome().setBeatsPerBar(beatsPerBar_);
   handleKeys();
   watchEdits();
   drawMenu();

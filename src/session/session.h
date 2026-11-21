@@ -123,6 +123,12 @@ class Session {
   Vca* vca(VcaId v);
   std::vector<VcaId> vcaIds() const;
 
+  // ---- tempo and beats per bar (saved with the session; the UI keeps them in step, the click and the ruler use them) ----
+  double tempo() const { return tempo_; }
+  int beatsPerBar() const { return beatsPerBar_; }
+  void setTempo(double bpm) { tempo_ = bpm < 20.0 ? 20.0 : (bpm > 400.0 ? 400.0 : bpm); }
+  void setBeatsPerBar(int n) { beatsPerBar_ = n < 1 ? 1 : (n > 16 ? 16 : n); }
+
   // ---- memory locations and markers (saved with the session) ----
   edit::MemoryLocations& memory() { return memory_; }
   const edit::MemoryLocations& memory() const { return memory_; }
@@ -216,6 +222,8 @@ class Session {
   std::vector<std::unique_ptr<Bus>> buses_;
   std::vector<std::unique_ptr<Vca>> vcas_;
   edit::MemoryLocations memory_;
+  double tempo_ = 120.0;
+  int beatsPerBar_ = 4;
   std::vector<std::pair<Graph::NodeId, Graph::NodeId>> edges_;  // everything we connected, so rewiring can undo it
   std::string recordDir_, sessionPath_;
   std::vector<std::string> warnings_;

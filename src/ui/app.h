@@ -260,6 +260,8 @@ class App {
   float framesPerPixel_ = 200.f;
   double scrollFrames_ = 0.0;
   float tempo_ = 120.f;
+  int beatsPerBar_ = 4;
+  const void* tempoSession_ = nullptr;   // the session whose tempo/beats the two fields above were last synced with
   bool followPlayhead_ = true, showTransportBar_ = true, metronome_ = false;
   bool dragging_ = false;
   int dragKind_ = 0;               // 0 none, 1 move clip, 2 trim start, 3 trim end, 4 select range

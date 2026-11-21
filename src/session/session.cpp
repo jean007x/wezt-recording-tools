@@ -710,7 +710,7 @@ bool Session::save(const std::string& path, std::string* error) {
 
   std::ostringstream o;
   o << "WEZT-SESSION 1\n";
-  o << "rate=" << fnum(rate_) << " channels=" << channels_ << " block=" << maxBlock_ << "\n";
+  o << "rate=" << fnum(rate_) << " channels=" << channels_ << " block=" << maxBlock_ << " tempo=" << fnum(tempo_) << " beats=" << beatsPerBar_ << "\n";
   auto stripLine = [&](const char* kind, const std::string& name, const Strip& s) {
     o << kind << " name=" << enc(name) << " gainDb=" << fnum(s.gainDb()) << " pan=" << fnum(s.pan()) << " mute=" << s.muted()
       << " auto=" << s.automationOn();
@@ -831,6 +831,8 @@ std::unique_ptr<Session> Session::load(const std::string& path, const InsertFact
 
   auto s = std::make_unique<Session>(rate, static_cast<std::size_t>(ch), static_cast<std::size_t>(blk));
   s->sessionPath_ = path;
+  s->setTempo(num(cfg.kv, "tempo", 120.0));
+  s->setBeatsPerBar(static_cast<int>(num(cfg.kv, "beats", 4)));
   const fs::path dir = fs::path(path).parent_path();
   std::vector<BusId> busIds{kMaster};
   std::vector<std::pair<BusId, int>> busOut;  // resolved once every bus exists
