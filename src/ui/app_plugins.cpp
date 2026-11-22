@@ -76,7 +76,7 @@ void App::drawPluginBrowser() {
   ImGui::TextDisabled("%s", tr ? ("adds to: " + tr->name).c_str() : "select a track first");
   if (sandboxAvailable()) {
     ImGui::Checkbox("Safe mode: run the plug-in in its own process (effects only)", &pbSafe_);
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("If the plug-in crashes or hangs, only its own process stops: the sound of that insert goes silent and Wezt keeps running.\nInstruments (MIDI) do not work in safe mode yet.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("If the plug-in crashes or hangs, only its own process stops: the sound of that insert goes silent and Wezt keeps running.\nInstruments work too; the plug-in's own window is not available in safe mode.");
   }
   ImGui::TextDisabled("%s", pbMessage_.c_str());
   if (ImGui::BeginTable("##pbt", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable, ImVec2(0, ImGui::GetContentRegionAvail().y))) {
@@ -101,12 +101,12 @@ void App::drawPluginBrowser() {
       if (ImGui::Button(("Add##pb" + std::to_string(row)).c_str())) {
         std::string err;
         plugins::PluginDescriptor want = e.plugin;
-        want.sandbox = pbSafe_ && sandboxAvailable() && want.format == plugins::Format::VST3;
+        want.sandbox = pbSafe_ && sandboxAvailable() && (want.format == plugins::Format::VST3 || want.format == plugins::Format::CLAP);
         std::unique_ptr<plugins::IPluginInstance> inst = makeInsert(want, &err);
         if (!inst) setStatus("Could not load " + e.plugin.name + ": " + err);
         else {
           plugins::PluginDescriptor d = e.plugin;
-          d.sandbox = pbSafe_ && sandboxAvailable() && d.format == plugins::Format::VST3;
+          d.sandbox = pbSafe_ && sandboxAvailable() && (d.format == plugins::Format::VST3 || d.format == plugins::Format::CLAP);
           const bool was = deviceRunning_;
           if (was) device_->stop();
           const bool ok = session_->addInsert(selTrack_, std::move(inst), d);

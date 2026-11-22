@@ -255,10 +255,16 @@ if(WEZT_ENABLE_BRIDGE)
   # separately (cmake -A Win32 on Windows) and pointed to by BridgeConfig::helperExecutable.
   add_executable(wezt-bridge src/plugins/bridge/bridge_helper.cpp)
   target_link_libraries(wezt-bridge PRIVATE wezt_bridge wezt_vst3)
+  if(WEZT_ENABLE_CLAP)
+    target_link_libraries(wezt-bridge PRIVATE wezt_clap)   # sets WEZT_HAS_CLAP through wezt_core
+  endif()
 
   add_executable(wezt_bridge_test tests/test_bridge.cpp)
   target_link_libraries(wezt_bridge_test PRIVATE wezt_bridge wezt_vst3)
-  add_test(NAME wezt_bridge_test COMMAND wezt_bridge_test $<TARGET_FILE:wezt-bridge> $<$<BOOL:${WEZT_VST3_TEST_PLUGIN}>:${WEZT_VST3_TEST_PLUGIN}> $<$<AND:$<BOOL:${WEZT_VST3_TEST_PLUGIN}>,$<BOOL:${WEZT_VST3_TEST_INSTRUMENT}>>:${WEZT_VST3_TEST_INSTRUMENT}>)
+  if(WEZT_ENABLE_CLAP)
+    target_link_libraries(wezt_bridge_test PRIVATE wezt_clap)
+  endif()
+  add_test(NAME wezt_bridge_test COMMAND wezt_bridge_test $<TARGET_FILE:wezt-bridge> $<$<BOOL:${WEZT_VST3_TEST_PLUGIN}>:${WEZT_VST3_TEST_PLUGIN}> $<$<AND:$<BOOL:${WEZT_VST3_TEST_PLUGIN}>,$<BOOL:${WEZT_VST3_TEST_INSTRUMENT}>>:${WEZT_VST3_TEST_INSTRUMENT}> $<$<BOOL:${WEZT_ENABLE_CLAP}>:--clap $<TARGET_FILE:wezt_test_gain>>)
 endif()
 
 # Make `cmake --build` + `ctest` work with no manual steps: when the SDK's sample plugins are enabled,

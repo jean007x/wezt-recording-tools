@@ -63,12 +63,12 @@ std::unique_ptr<plugins::IPluginInstance> makeInsert(const plugins::PluginDescri
   if (auto b = instruments::makeBuiltin(d)) return b;
   std::unique_ptr<plugins::IPluginInstance> out;
 #if defined(WEZT_HAS_BRIDGE)
-  if (d.sandbox && d.format == plugins::Format::VST3) {   // safe mode: the plug-in lives in its own process; its crash cannot take Wezt down
+  if (d.sandbox && (d.format == plugins::Format::VST3 || d.format == plugins::Format::CLAP)) {   // safe mode: the plug-in lives in its own process; its crash cannot take Wezt down
     const std::string helper = bridgeHelperPath();
     if (helper.empty()) { if (error) *error = "safe mode needs the wezt-bridge program next to Wezt, and it is missing"; return nullptr; }
     plugins::BridgeConfig cfg;
     cfg.helperExecutable = helper;
-    if (!d.name.empty()) { cfg.helperArgs.push_back("--class"); cfg.helperArgs.push_back(d.name); }
+    if (d.format == plugins::Format::VST3 && !d.name.empty()) { cfg.helperArgs.push_back("--class"); cfg.helperArgs.push_back(d.name); }
     return std::make_unique<plugins::BridgedPluginInstance>(cfg, d.path, 2);
   }
 #endif

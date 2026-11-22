@@ -15,6 +15,9 @@
 #include "plugins/bridge/bridge_ipc.h"
 #include "plugins/bridge/bridge_protocol.h"
 #include "plugins/vst3_host.h"
+#if defined(WEZT_HAS_CLAP)
+#include "plugins/clap_host.h"
+#endif
 
 using namespace wezt;
 using namespace wezt::plugins;
@@ -48,7 +51,18 @@ int main(int argc, char** argv) {
 
   const auto pluginIt = args.find("plugin");
   if (pluginIt == args.end()) return fail("no --plugin given");
-  auto inst = Vst3Instance::load(pluginIt->second, &err, args.count("class") ? args.at("class") : std::string());
+  std::unique_ptr<IPluginInstance> inst;
+  const std::string& path = pluginIt->second;
+  const bool isClap = path.size() > 5 && path.compare(path.size() - 5, 5, ".clap") == 0;
+  if (isClap) {
+#if defined(WEZT_HAS_CLAP)
+    inst = ClapInstance::load(path, &err);
+#else
+    return fail("this helper was built without CLAP support");
+#endif
+  } else {
+    inst = Vst3Instance::load(path, &err, args.count("class") ? args.at("class") : std::string());
+  }
   if (!inst) return fail(err);
 
   const Layout lay = Layout::compute(h->channels, h->maxFrames);
@@ -59,7 +73,7 @@ int main(int argc, char** argv) {
   const std::uint32_t channels = h->channels, maxFrames = h->maxFrames;
 
   inst->prepare(h->sampleRate, maxFrames);
-  copyStr(h->pluginName, sizeof h->pluginName, inst->name());
+  copyStr(h->pluginName, sizeof h->pluginName, inst->displayName());
   h->paramCount.store(static_cast<std::uint32_t>(inst->parameterCount()));
   h->latency.store(static_cast<std::int32_t>(inst->latencySamples()));
   h->acceptsMidi.store(inst->acceptsMidi() ? 1 : 0);

@@ -19,6 +19,9 @@
 #include "plugins/bridge/bridge_host.h"
 #include "plugins/bridge/bridge_ipc.h"
 #include "plugins/vst3_host.h"
+#if defined(WEZT_HAS_CLAP)
+#include "plugins/clap_host.h"
+#endif
 
 using namespace wezt;
 using namespace wezt::plugins;
@@ -90,10 +93,10 @@ int main(int argc, char** argv) {
   std::string err;
 
   // An instrument in safe mode: notes cross the bridge and make sound; an effect reports no MIDI.
-  if (argc >= 4) {
+  if (argc >= 4 && std::string(argv[3]) != "--clap") {
     BridgeConfig cfg;
     cfg.helperExecutable = helper;
-    cfg.helperArgs = {"--class", argc >= 5 ? argv[4] : "mda Piano"};
+    cfg.helperArgs = {"--class", argc >= 5 && std::string(argv[4]) != "--clap" ? argv[4] : "mda Piano"};
     BridgedPluginInstance b(cfg, argv[3]);
     b.prepare(48000, 256);
     CHECK(b.ready());
@@ -111,6 +114,37 @@ int main(int argc, char** argv) {
     CHECK(before < 1e-4f);
     CHECK(after > 0.01f);
   }
+#if defined(WEZT_HAS_CLAP)
+  std::string clapPath;
+  for (int i = 1; i + 1 < argc; ++i) if (std::string(argv[i]) == "--clap") clapPath = argv[i + 1];
+  if (!clapPath.empty()) {   // a CLAP plug-in in safe mode sounds exactly like the same plug-in in-process
+    BridgeConfig cfg;
+    cfg.helperExecutable = helper;
+    BridgedPluginInstance b(cfg, clapPath);
+    b.prepare(48000, 256);
+    CHECK(b.ready());
+    std::string cerr;
+    auto direct = ClapInstance::load(clapPath, &cerr);
+    CHECK(direct != nullptr);
+    if (direct && b.ready()) {
+      direct->prepare(48000, 256);
+      CHECK(b.parameterCount() == direct->parameterCount());
+      const auto pr = direct->parameters();
+      if (!pr.empty()) { b.setParameterNormalized(pr[0].id, 0.5); direct->setParameterNormalized(pr[0].id, 0.5); }
+      float maxDiff = 0, peak = 0;
+      for (int i = 0; i < 6; ++i) {
+        AudioBuffer in = sineBlock(256, i * 0.3), o1(2, 256), o2(2, 256);
+        b.process(in, o1);
+        direct->process(in, o2);
+        if (i == 0) continue;   // the first block carries the parameter change
+        for (std::size_t k = 0; k < o1.data.size(); ++k) { maxDiff = std::fmax(maxDiff, std::fabs(o1.data[k] - o2.data[k])); peak = std::fmax(peak, std::fabs(o1.data[k])); }
+      }
+      std::printf("bridged CLAP: peak %.4f, max difference to in-process %.3g\n", peak, maxDiff);
+      CHECK(peak > 0.05f);
+      CHECK(maxDiff < 1e-6f);
+    }
+  }
+#endif
   {
     BridgeConfig cfg;
     cfg.helperExecutable = helper;
