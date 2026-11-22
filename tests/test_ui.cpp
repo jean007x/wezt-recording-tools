@@ -446,6 +446,31 @@ int main() {
     frames(app);
     CHECK(app.openEditorCount() == 0 && host.closedCalls == 2);
   }
+  {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step
+    App app;
+    frames(app);
+    auto& s = app.session();
+    const auto dir = std::filesystem::temp_directory_path() / "wezt_ui_rec";
+    std::filesystem::remove_all(dir);
+    s.setRecordFolder((dir / "Audio Files").string());
+    const auto t = s.addTrack("Vox UI", true, {0});
+    s.track(t)->source->arm(true);
+    const std::size_t before = s.track(t)->source->playlist().size();
+    audio::AudioConfig cfg; cfg.sampleRate = 48000; cfg.bufferFrames = 128; cfg.inChannels = 2; cfg.outChannels = 2;
+    app.engine().deviceAboutToStart(cfg);
+    app.engine().transport().locate(1000);
+    app.engine().transport().record();
+    std::vector<float> in0(128, 0.25f), in1(128, 0.25f), o0(128), o1(128);
+    const float* ins[2] = {in0.data(), in1.data()};
+    float* outs[2] = {o0.data(), o1.data()};
+    for (int i = 0; i < 20; ++i) app.engine().process(ins, outs, 128);
+    frames(app, 2);                                   // the app sees recording
+    app.engine().transport().stop();
+    app.engine().process(ins, outs, 128);
+    frames(app, 3);                                   // ... and the stop: the take is committed
+    CHECK(s.track(t)->source->playlist().size() == before + 1);
+    std::filesystem::remove_all(dir);
+  }
   {  // drawing plug-in automation with the mouse in the Plugin Parameters graph: click adds a point, undo removes it
     App app;
     auto& s = app.session();
