@@ -188,7 +188,7 @@ bool App::isImplemented(Command c) const {
   switch (c) {
     case Command::PlayStop: case Command::Record: case Command::LoopPlayback: case Command::ReturnToStart: case Command::GoToEnd:
     case Command::Rewind: case Command::FastForward:
-    case Command::Metronome: case Command::CountOff: case Command::PreRoll: case Command::QuickPunch:
+    case Command::Metronome: case Command::CountOff: case Command::PreRoll: case Command::QuickPunch: case Command::PunchRecord:
     case Command::ModeShuffle: case Command::ModeSlip: case Command::ModeSpot: case Command::ModeGrid:
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
     case Command::CycleEditModes: case Command::CycleEditTools:
@@ -220,6 +220,16 @@ void App::execute(Command c) {
       const int cur = engine_->metronome().countOffBars(), next = cur == 0 ? 1 : cur == 1 ? 2 : cur == 2 ? 4 : 0;
       engine_->metronome().setCountOffBars(next);
       setStatus(next ? "Count-off before recording: " + std::to_string(next) + (next == 1 ? " bar" : " bars") : std::string("Count-off off"));
+      break;
+    }
+    case Command::PunchRecord: {
+      bool any = false;
+      for (auto id : session_->trackIds()) any = any || session_->track(id)->source->armed();
+      if (!any) { setStatus("Arm a track (R) before recording"); break; }
+      if (selEnd_ <= selStart_) { setStatus("Select the range to record into, then use Record Selection"); break; }
+      if (tr.playing()) tr.stop();
+      engine_->startPunch(selStart_, selEnd_);
+      setStatus("Recording the selection (rolls in first, punches out at its end)");
       break;
     }
     case Command::QuickPunch: {

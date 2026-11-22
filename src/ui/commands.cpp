@@ -27,7 +27,7 @@ const CommandInfo kCommands[] = {
   {Command::StopRecord,"Stop Record"},{Command::LoopPlayback,"Loop Playback"},{Command::LoopRecord,"Loop Record"},
   {Command::ReturnToStart,"Return to Start"},{Command::GoToEnd,"Go to End"},{Command::Rewind,"Rewind"},
   {Command::FastForward,"Fast Forward"},{Command::QuickPunch,"QuickPunch"},{Command::Pause,"Pause"},
-  {Command::OnlinePlayback,"Online"},{Command::Metronome,"Metronome"},{Command::CountOff,"Count Off"},{Command::PreRoll,"Pre-roll"},
+  {Command::OnlinePlayback,"Online"},{Command::Metronome,"Metronome"},{Command::CountOff,"Count Off"},{Command::PreRoll,"Pre-roll"},{Command::PunchRecord,"Record Selection (Punch)"},
   {Command::ModeShuffle,"Shuffle"},{Command::ModeSlip,"Slip"},{Command::ModeSpot,"Spot"},{Command::ModeGrid,"Grid"},
   {Command::ModeSnapToGrid,"Snap to Grid"},{Command::CycleEditModes,"Cycle Edit Modes"},
   {Command::ToolZoomer,"Zoomer"},{Command::ToolTrimmer,"Trimmer"},{Command::ToolSelector,"Selector"},
@@ -163,6 +163,7 @@ Keymap Keymap::protoolsDefaults() {
   b(Key::Kp7, 0, C::Metronome);
   b(Key::Kp8, 0, C::CountOff);
   b(Key::Kp9, 0, C::PreRoll);
+  b(Key::R, kCtrl | kShift, C::PunchRecord);
   // Edit modes and tools
   b(Key::F1, 0, C::ModeShuffle);  b(Key::D1, kAlt, C::ModeShuffle);
   b(Key::F2, 0, C::ModeSlip);     b(Key::D2, kAlt, C::ModeSlip);

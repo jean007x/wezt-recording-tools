@@ -349,6 +349,28 @@ static void testQuickPunch() {
   CHECK(r.e->transport().playing() && !r.e->transport().recording() && r.e->transport().position() > at);   // the song never stopped
 }
 
+static void testPunchRange() {
+  Rig r(128); CHECK(r.start(0, 2));
+  r.e->setPreRollFrames(4800);
+  r.e->startPunch(20000, 30000);
+  std::int64_t recOn = -1, recOff = -1, stopped = -1;
+  bool wasRec = false;
+  for (int i = 0; i < 600 && stopped < 0; ++i) {
+    runSizes(r, 2, std::vector<unsigned>(1, 128));
+    const bool rec = r.e->transport().recording();
+    if (rec && !wasRec && recOn < 0) recOn = r.e->transport().position();
+    if (!rec && wasRec && recOff < 0) recOff = r.e->transport().position();
+    wasRec = rec;
+    if (!r.e->transport().playing()) stopped = r.e->transport().position();
+  }
+  CHECK(recOn >= 20000 && recOn <= 20000 + 128);       // on at the start of the range
+  CHECK(recOff >= 30000 && recOff <= 30000 + 128);     // off at its end
+  CHECK(stopped >= 34800 && stopped <= 34800 + 256);   // stops after the 100 ms post-roll
+  CHECK(!r.e->preRolling());
+  r.e->startPunch(5, 5);                                // an empty range does nothing
+  CHECK(!r.e->transport().playing());
+}
+
 static void testPreRoll() {
   {  // record from 3 s with a 1 s pre-roll: the song rolls in from 2 s, recording switches on exactly at 3 s
     Rig r(128); CHECK(r.start(0, 2));
@@ -448,6 +470,7 @@ static void testMetronomeAndCountOff() {
 int main() {
   testMetronomeAndCountOff();
   testPreRoll();
+  testPunchRange();
   testQuickPunch();
   testFaultContainment();
   testNonFiniteOutput();

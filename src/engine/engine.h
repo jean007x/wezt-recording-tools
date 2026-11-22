@@ -37,6 +37,9 @@ class Engine : public audio::AudioCallback {
   // hears the lead-in. Recording switches on exactly at the playhead the start was requested at. 0 = off.
   void setPreRollFrames(std::int64_t f) { preRoll_.store(f < 0 ? 0 : f, std::memory_order_relaxed); }
   std::int64_t preRollFrames() const { return preRoll_.load(std::memory_order_relaxed); }
+  // Punch recording: roll in (pre-roll), record exactly [startFrame, endFrame), punch out, and keep playing for the post-roll
+  // (the same length as the pre-roll) before stopping. Needs a stopped or playing transport; control thread.
+  void startPunch(std::int64_t startFrame, std::int64_t endFrame);
   bool preRolling() const { return recordAt_.load(std::memory_order_acquire) >= 0; }
   bool countingOff() const { return countOffLeft_.load(std::memory_order_acquire) > 0; }
   // Processors (e.g. the mixer) keep this pointer and read it inside process().
@@ -61,7 +64,7 @@ class Engine : public audio::AudioCallback {
   Metronome metronome_;
   std::atomic<std::int64_t> countOffLeft_{0}, countOffTotal_{0};
   std::atomic<bool> countOffRecord_{false};
-  std::atomic<std::int64_t> preRoll_{0}, recordAt_{-1};
+  std::atomic<std::int64_t> preRoll_{0}, recordAt_{-1}, recordEnd_{-1}, stopAt_{-1};
   void beginRoll(bool record);
   RtContext ctx_;
   AudioBuffer block_;

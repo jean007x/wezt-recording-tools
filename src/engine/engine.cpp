@@ -54,6 +54,17 @@ void Engine::beginRoll(bool record) {   // control thread, or the audio thread a
   else transport_.play();
 }
 
+void Engine::startPunch(std::int64_t startFrame, std::int64_t endFrame) {
+  if (endFrame <= startFrame || startFrame < 0) return;
+  recordEnd_.store(-1, std::memory_order_relaxed); stopAt_.store(-1, std::memory_order_relaxed);
+  const std::int64_t pre = preRoll_.load(std::memory_order_relaxed);
+  transport_.locate(std::max<std::int64_t>(0, startFrame - pre));
+  transport_.play();
+  recordEnd_.store(endFrame, std::memory_order_relaxed);
+  stopAt_.store(pre > 0 ? endFrame + pre : -1, std::memory_order_relaxed);
+  recordAt_.store(startFrame, std::memory_order_release);   // last: the audio thread drops these while stopped
+}
+
 void Engine::startWithCountOff(bool record) {
   const std::int64_t n = metronome_.countOffFrames(ctx_.sampleRate);
   if (n <= 0) { beginRoll(record); return; }
@@ -78,6 +89,20 @@ void Engine::process(const float* const* in, float* const* out, unsigned frames)
         if (!playing) recordAt_.store(-1, std::memory_order_release);
         else if (start >= at) { transport_.record(); recordAt_.store(-1, std::memory_order_release); }
         else if (at - start < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(at - start);
+      }
+    }
+    {   // punch recording: end the take exactly at the punch-out frame, stop after the post-roll
+      const std::int64_t re = recordEnd_.load(std::memory_order_relaxed), sa = stopAt_.load(std::memory_order_relaxed);
+      if (!playing) { recordEnd_.store(-1, std::memory_order_relaxed); stopAt_.store(-1, std::memory_order_relaxed); }
+      else {
+        if (re >= 0 && transport_.recording()) {
+          if (start >= re) { transport_.punchOut(); recordEnd_.store(-1, std::memory_order_relaxed); }
+          else if (re - start < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(re - start);
+        }
+        if (sa >= 0) {
+          if (start >= sa) { transport_.stop(); stopAt_.store(-1, std::memory_order_relaxed); }
+          else if (sa - start < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(sa - start);
+        }
       }
     }
     if (playing) {  // end the chunk exactly at the loop end so the wrap is sample-accurate
