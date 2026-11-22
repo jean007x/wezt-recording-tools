@@ -115,5 +115,5 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 - **Real-world checks still missing:** the window on a real display, real audio hardware, a real MIDI keyboard, commercial (third-party) plug-ins, a real Claude Desktop session, and a real 32-bit helper.
 - **Packaging:** unsigned archives are built by `release.yml`; there are no installers, and no code signing or macOS notarization (those need certificates).
 - **From the reference document:** Spot dialog, Scrubber, Pencil, Real-Time Properties, MPE, Routing Folders, per-track Commit/Freeze,
-  Track Pin, (post-roll is now the pre-roll length, punch range = selection), Extensions API, Speech-to-Text, Project Browser, Workspace, Video, AAF/OMF,
+  Track Pin, Extensions API, Speech-to-Text, Project Browser, Workspace, Video, AAF/OMF,
   AU and VST2 loading, AAX/RTAS/TDM (not hostable).
