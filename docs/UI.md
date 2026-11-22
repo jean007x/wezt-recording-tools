@@ -149,7 +149,7 @@ What is tested: the settings file, WAV and MP3 loading (a real MP3 is decoded an
 build-up, impact, the clash at the opening, silent start and end), the logo picture, and the Settings window's save logic; the
 animation of the 2D fallback is rendered headless (`wezt_ui_snapshot out.ppm intro3.9`), and the distance-field maths of the logo has a unit test. The GL intro was compiled and
 rendered frame by frame only through Mesa's *software* OpenGL (Linux, `wezt_intro_gl_snapshot out_prefix black 3.9 4.6`), so the picture is
-checked but its speed is not. **Not tested:** the GL intro on real GPUs, on Windows or macOS drivers, the animation and sound on a real screen and real
+checked but its speed is not. On a slow card the intro lowers its own internal resolution (down to 640 px wide) when it runs below about 40 fps; the logic is checked with an artificially slow render loop on the software renderer. **Not tested:** the GL intro on real GPUs, on Windows or macOS drivers, the animation and sound on a real screen and real
 speakers, and that the visuals and the sound line up on a given machine (the picture runs on the frame clock, the sound on the
 device clock).
 Playback goes through the system's default output; with no audio backend (e.g. Linux builds) the intro is silent.

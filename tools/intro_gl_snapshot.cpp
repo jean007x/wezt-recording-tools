@@ -7,6 +7,8 @@
 #include <vector>
 #include <dlfcn.h>
 #include "ui/intro_gl.h"
+#include <chrono>
+#include <thread>
 typedef void* EGLDisplay; typedef void* EGLConfig; typedef void* EGLContext; typedef void* EGLSurface; typedef int EGLint; typedef unsigned EGLBoolean; typedef unsigned EGLenum;
 int main(int argc, char** argv) {
   if (argc < 4) { std::fprintf(stderr, "usage\n"); return 2; }
@@ -29,6 +31,8 @@ int main(int argc, char** argv) {
   if (!ctx || !eglMakeCurrent(d, nullptr, nullptr, ctx)) { std::fprintf(stderr, "ctx\n"); return 1; }
   auto ld = [](const char* nme) -> void* { static void* l = dlopen("libEGL.so.1", RTLD_NOW); auto g = reinterpret_cast<void*(*)(const char*)>(dlsym(l, "eglGetProcAddress")); return g(nme); };
   wezt::ui::IntroRenderer r; std::string err;
+  const bool adapt = std::getenv("ADAPT") != nullptr;   // ADAPT=1: pace frames at 40 ms and show how far the resolution falls
+  r.setAdaptive(adapt);
   if (!r.init(ld, std::strcmp(argv[2], "black") == 0, &err)) { std::fprintf(stderr, "init: %s\n", err.c_str()); return 1; }
   const int W = argc > 0 && std::getenv("W") ? std::atoi(std::getenv("W")) : 1280, H = std::getenv("H") ? std::atoi(std::getenv("H")) : 720;
   typedef unsigned GLuint; typedef int GLint;
@@ -39,6 +43,16 @@ int main(int argc, char** argv) {
   auto rd = reinterpret_cast<void(*)(int, int, int, int, unsigned, unsigned, void*)>(ld("glReadPixels"));
   GLuint tex, fbo; genT(1, &tex); bindT(0x0DE1, tex); img(0x0DE1, 0, 0x8058, W, H, 0, 0x1908, 0x1401, nullptr);
   genF(1, &fbo); bindF(0x8D40, fbo); fbt(0x8D40, 0x8CE0, 0x0DE1, tex, 0);
+  if (adapt) {
+    int w0 = 0;
+    for (int f = 0; f < 60; ++f) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(40));
+      r.render(1.0 + f * 0.04, W, H);
+      if (f == 0) w0 = r.internalWidth();
+    }
+    std::printf("adaptive: first frame %d px wide, after 60 slow frames %d px wide\n", w0, r.internalWidth());
+    return r.internalWidth() < w0 && r.internalWidth() >= 640 ? 0 : 1;
+  }
   for (int i = 3; i < argc; ++i) {
     double t = std::atof(argv[i]);
     r.render(t, W, H);

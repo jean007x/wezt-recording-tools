@@ -1,6 +1,7 @@
 #include "ui/intro_gl.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -122,6 +123,9 @@ struct IntroRenderer::Impl {
   GLuint progScene = 0, progDown = 0, progUp = 0, progStreak = 0, progComp = 0;
   Target scene, lv[kLevels], up[kLevels], streak;
   int bw = 0, bh = 0;
+  bool adaptive = true;
+  int maxW = 1920, curW = 0, framesSeen = 0, sinceChange = 0;
+  double lastWall = 0, avgDt = 0.016;
   float halfX = 1.f, halfY = 0.35f, logoHalfY = 0.33f;
 
   GLuint compile(GLenum type, const std::string& src, std::string* err) {
@@ -271,6 +275,9 @@ void IntroRenderer::shutdown() {
   m.ready = false;
 }
 
+void IntroRenderer::setAdaptive(bool on) { impl_->adaptive = on; }
+int IntroRenderer::internalWidth() const { return impl_->curW; }
+
 void IntroRenderer::render(double t, int fbW, int fbH) {
   Impl& m = *impl_;
   if (!m.ready || fbW < 16 || fbH < 16) return;
@@ -282,8 +289,21 @@ void IntroRenderer::render(double t, int fbW, int fbH) {
 
   int bx, by, bw, bh;
   band(fbW, fbH, &bx, &by, &bw, &bh);
+  if (m.adaptive) {   // lower the resolution if the card cannot keep up
+    const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (m.lastWall > 0 && wall - m.lastWall < 1.0) {   // a longer gap is a stall (window drag, debugger), not the card
+      m.avgDt += (std::min(wall - m.lastWall, 0.2) - m.avgDt) * 0.25;
+      ++m.framesSeen; ++m.sinceChange;
+      if (m.framesSeen > 8 && m.sinceChange > 10 && m.avgDt > 0.025 && m.maxW > 640) {
+        m.maxW = std::max(640, static_cast<int>(m.maxW * 0.75));
+        m.sinceChange = 0;
+      }
+    }
+    m.lastWall = wall;
+  }
   int iw = bw, ih = bh;
-  if (iw > 1920) { ih = static_cast<int>(std::lround(ih * 1920.0 / iw)); iw = 1920; }
+  if (iw > m.maxW) { ih = static_cast<int>(std::lround(ih * static_cast<double>(m.maxW) / iw)); iw = m.maxW; }
+  m.curW = iw;
   if (!m.sizeTo(iw, ih)) {
     m.ready = false;
   } else {

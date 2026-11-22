@@ -31,6 +31,12 @@ class IntroRenderer {
   // picture in a 2.39:1 band, centred). fbW/fbH = the framebuffer's size in pixels.
   void render(double t, int fbW, int fbH);
 
+  // Slow graphics card? By default the renderer watches the time between frames and, if the intro runs below about 40 frames per
+  // second, lowers the internal resolution step by step (never below 640 px wide); the picture is simply a little softer.
+  // Switch it off for reproducible pictures (the snapshot tool does).
+  void setAdaptive(bool on);
+  int internalWidth() const;   // the width the picture is drawn at now (0 before the first frame)
+
   // The wide-screen band (x, y, w, h in pixels) render() draws into for a framebuffer of this size.
   static void band(int fbW, int fbH, int* x, int* y, int* w, int* h);
 
