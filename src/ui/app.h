@@ -268,6 +268,8 @@ class App {
   std::size_t quarantineShown_ = 0;   // how many muted plug-ins the user has already been told about
   void watchPluginFaults();
   bool quit_ = false, deviceRunning_ = false, deviceLost_ = false;
+  std::string defaultOutId_, defaultInId_;   // the system defaults the open stream was made for
+  double defaultCheckAt_ = 0;
   double deviceRetryAt_ = 0.0;
 
   Tool tool_ = Tool::Selector;

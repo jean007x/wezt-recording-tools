@@ -16,7 +16,7 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
   and a probe plug-in; the real VST3 sample plug-ins never change their latency, so that path is exercised only up to registering the handler.
 - **Device loss (built, tested against the simulators):** WASAPI (invalidated device, no event for 0.5 s) and CoreAudio (the DeviceIsAlive
   listener) report a stream that died; the app shows a message, stops the transport and tries to reopen the system default device every 2 s.
-  Real unplugging on real hardware has not been tried. Not built: following a default-device change while the stream still works.
+  Real unplugging on real hardware has not been tried. When the system default device changes while the stream still works, the app checks every 2 s and reopens on the new default once the transport is stopped (compiles in CI, but never tried on real devices; there is no automated test of it).
 
 ## Edit window
 

@@ -91,6 +91,24 @@ void App::watchAudioDevice() {
     engine_->transport().stop();
     setStatus("Audio device lost (unplugged or taken over by another program). Looking for it again...");
   }
+  // The stream follows the system default: when the user changes it in the system sound settings (or plugs in headphones that
+  // become the default), reopen on the new one. Never while the song plays or records; it waits for the stop.
+  if (deviceRunning_ && now >= defaultCheckAt_) {
+    defaultCheckAt_ = now + 2.0;
+    std::string out, in;
+    for (const auto& d : audio::listDevices()) { if (d.isDefaultOutput) out = d.id; if (d.isDefaultInput) in = d.id; }
+    if (defaultOutId_.empty() && defaultInId_.empty()) { defaultOutId_ = out; defaultInId_ = in; }   // first look: remember
+    else if ((out != defaultOutId_ || in != defaultInId_) && !out.empty() &&
+             !engine_->transport().playing() && !engine_->countingOff()) {
+      defaultOutId_ = out; defaultInId_ = in;
+      device_->stop();
+      audio::AudioConfig cfg;
+      cfg.sampleRate = static_cast<unsigned>(session_->sampleRate()); cfg.bufferFrames = 256; cfg.inChannels = 2; cfg.outChannels = 2;
+      std::string err;
+      if (device_->open(cfg, engine_.get(), &err) && device_->start(&err)) setStatus("The system default audio device changed; Wezt switched to it");
+      else { deviceRunning_ = false; deviceLost_ = true; deviceRetryAt_ = now + 1.0; setStatus("Audio device changed; reopening..."); }
+    }
+  }
   if (deviceLost_ && now >= deviceRetryAt_) {
     deviceRetryAt_ = now + 2.0;
     audio::AudioConfig cfg;
@@ -99,6 +117,7 @@ void App::watchAudioDevice() {
     if (device_->open(cfg, engine_.get(), &err) && device_->start(&err)) {
       deviceRunning_ = true;
       deviceLost_ = false;
+      defaultOutId_.clear(); defaultInId_.clear();
       setStatus("Audio device is back: " + device_->backendName() + " running");
     }
   }
