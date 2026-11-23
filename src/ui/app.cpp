@@ -52,6 +52,9 @@ App::App() {
   session_ = std::make_unique<session::Session>(48000.0, 2, 512);
   engine_ = std::make_unique<Engine>(session_->graph(), 512, 2, 48000.0, 60);
   session_->attach(engine_->context());
+  metronome_ = prefs_.clickOn;                                    // recording helpers are remembered between runs
+  engine_->metronome().setCountOffBars(prefs_.countOffBars);
+  engine_->setPreRollFrames(static_cast<std::int64_t>(prefs_.preRollSeconds * session_->sampleRate()));
   keymap_ = Keymap::protoolsDefaults();
   selTrack_ = session_->addTrack("Audio 1", true);
   panner_ = std::make_unique<immersive::ObjectRenderer>(layout_, immersive::SpeakerLayout{}, 0);
@@ -215,10 +218,11 @@ void App::execute(Command c) {
   if (!isImplemented(c)) { setStatus(std::string(commandName(c)) + " is not available yet"); return; }
   switch (c) {
     case Command::PlayStop: if (engine_->countingOff()) engine_->cancelCountOff(); else if (tr.playing()) tr.stop(); else tr.play(); break;
-    case Command::Metronome: metronome_ = !metronome_; setStatus(metronome_ ? "Metronome on" : "Metronome off"); break;
+    case Command::Metronome: metronome_ = !metronome_; prefs_.clickOn = metronome_; savePrefs(prefs_); setStatus(metronome_ ? "Metronome on" : "Metronome off"); break;
     case Command::CountOff: {
       const int cur = engine_->metronome().countOffBars(), next = cur == 0 ? 1 : cur == 1 ? 2 : cur == 2 ? 4 : 0;
       engine_->metronome().setCountOffBars(next);
+      prefs_.countOffBars = next; savePrefs(prefs_);
       setStatus(next ? "Count-off before recording: " + std::to_string(next) + (next == 1 ? " bar" : " bars") : std::string("Count-off off"));
       break;
     }
@@ -245,6 +249,7 @@ void App::execute(Command c) {
       const double cur = static_cast<double>(engine_->preRollFrames()) / session_->sampleRate();
       const int next = cur < 0.5 ? 2 : cur < 2.5 ? 4 : cur < 4.5 ? 8 : 0;
       engine_->setPreRollFrames(static_cast<std::int64_t>(next * session_->sampleRate()));
+      prefs_.preRollSeconds = next; savePrefs(prefs_);
       setStatus(next ? "Pre-roll: " + std::to_string(next) + " seconds before the record point" : std::string("Pre-roll off"));
       break;
     }

@@ -41,6 +41,9 @@ Prefs loadPrefs(const std::string& path) {
     if (k == "intro") p.introEnabled = v != "0";
     else if (k == "intro_logo") p.introLogoBlack = v != "gold";
     else if (k == "intro_sound") p.introSoundPath = v;
+    else if (k == "click") p.clickOn = v == "1";
+    else if (k == "count_off") { const int n = std::atoi(v.c_str()); p.countOffBars = (n == 1 || n == 2 || n == 4) ? n : 0; }
+    else if (k == "pre_roll") { const int n = std::atoi(v.c_str()); p.preRollSeconds = (n == 2 || n == 4 || n == 8) ? n : 0; }
   }
   return p;
 }
@@ -56,6 +59,9 @@ bool savePrefs(const Prefs& p, const std::string& path) {
     f << "intro=" << (p.introEnabled ? 1 : 0) << "\n";
     f << "intro_logo=" << (p.introLogoBlack ? "black" : "gold") << "\n";
     f << "intro_sound=" << p.introSoundPath << "\n";
+    f << "click=" << (p.clickOn ? 1 : 0) << "\n";
+    f << "count_off=" << p.countOffBars << "\n";
+    f << "pre_roll=" << p.preRollSeconds << "\n";
     if (!f) return false;
   }
   fs::rename(tmp, path, ec);

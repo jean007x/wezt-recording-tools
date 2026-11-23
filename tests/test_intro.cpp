@@ -32,9 +32,10 @@ static void testPrefs() {
   const std::string file = (dir / "sub" / "settings.txt").string();
   Prefs d = loadPrefs(file);                                  // no file: defaults
   CHECK(d.introEnabled && d.introLogoBlack && d.introSoundPath.empty());
-  Prefs p; p.introEnabled = false; p.introLogoBlack = false; p.introSoundPath = "/music/my intro = v2.mp3";
+  Prefs p; p.clickOn = true; p.countOffBars = 2; p.preRollSeconds = 4; p.introEnabled = false; p.introLogoBlack = false; p.introSoundPath = "/music/my intro = v2.mp3";
   CHECK(savePrefs(p, file));                                  // creates the folder
   Prefs q = loadPrefs(file);
+  CHECK(q.clickOn && q.countOffBars == 2 && q.preRollSeconds == 4);
   CHECK(!q.introEnabled && !q.introLogoBlack && q.introSoundPath == "/music/my intro = v2.mp3");
   p.introEnabled = true; p.introSoundPath.clear();
   CHECK(savePrefs(p, file));

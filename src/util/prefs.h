@@ -9,6 +9,9 @@ namespace wezt {
 struct Prefs {
   bool introEnabled = true;        // play the opening animation and sound at start-up
   bool introLogoBlack = true;      // the logo in polished black (true) or polished gold (false)
+  bool clickOn = false;            // metronome click on
+  int countOffBars = 0;            // count-off before recording: 0, 1, 2 or 4 bars
+  int preRollSeconds = 0;          // pre-roll before recording from the playhead: 0, 2, 4 or 8 seconds
   std::string introSoundPath;      // empty = the built-in sound; otherwise a WAV or MP3 the user chose
 };
 
