@@ -255,8 +255,10 @@ class App {
   void duplicateSelectedClip();
   void copySelectedClip(bool cut);
   void pasteClip();
-  bool hasClipboard_ = false;
-  session::Clip clipboard_;   // the clip last copied or cut (it shares the audio data, nothing is duplicated in memory)
+  // The clips last copied or cut, with starts relative to the copied range (or 0 for a single clip). They share the audio data,
+  // so nothing is duplicated in memory. clipboardLen_ is the length of the copied span.
+  std::vector<session::Clip> clipboard_;
+  std::int64_t clipboardLen_ = 0;
   void deleteSelectedClip();
   void fadeSelectedClip();
   void zoomTo(std::int64_t a, std::int64_t b);

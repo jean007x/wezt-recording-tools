@@ -28,7 +28,7 @@ Everything in `src/ui/commands.cpp`. Open View > Keyboard shortcuts for the live
 not implemented yet appear dimmed and say so in the status bar instead of doing nothing. Not
 implemented (status at the last update): clip mute, consolidate, scrub, pencil, grouping, commit/bounce track,
 loop record, half-speed playback, pause, online playback, text-range trims, heal separation, memory-location
-recall by number. Cut, copy and paste work on one selected audio clip (paste lands at the playhead on the selected track).
+recall by number. Cut, copy and paste work on a selected range (all clips in it on the selected track, trimmed to it, with fades and gain line kept on their own edges) or, with no range, on the selected clip; paste lands at the playhead on the selected track and overwrites what is underneath (locked clips are left alone). Audio does not go to the system clipboard.
 
 ## Building
 

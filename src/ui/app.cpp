@@ -384,27 +384,92 @@ void App::duplicateSelectedClip() {
   setStatus("Clip duplicated");
 }
 
+// The part of a clip that lies inside [a, b) on the timeline (a and b already clamped to the clip). Fades stay only on the edges that
+// are still the clip's own edges; the gain line is cut to the same part.
+static Clip slicePiece(const Clip& c, std::int64_t a, std::int64_t b) {
+  Clip n = c;
+  const std::int64_t shift = a - c.start;
+  n.start = a; n.offset = c.offset + shift; n.length = b - a;
+  if (a > c.start) n.fadeIn = 0;
+  if (b < c.start + c.length) n.fadeOut = 0;
+  if (!c.gainEnv.empty() && shift > 0) {
+    session::AutomationLane env;
+    float held = 0.f; bool have = false;
+    for (const auto& p : c.gainEnv.points()) {
+      if (p.frame <= shift) { held = p.value; have = true; }
+      else if (p.frame - shift < n.length) env.add(p.frame - shift, p.value);
+    }
+    if (have) env.add(0, held);
+    n.gainEnv = env;
+  }
+  return n;
+}
+
+// Copies the material in [a, b) of a track: every clip that touches it, trimmed to it, starting relative to a.
+static std::vector<Clip> copyRange(const std::vector<Clip>& list, std::int64_t a, std::int64_t b) {
+  std::vector<Clip> out;
+  for (const auto& c : list) {
+    const std::int64_t s = std::max(c.start, a), e = std::min(c.start + c.length, b);
+    if (e <= s) continue;
+    Clip n = slicePiece(c, s, e);
+    n.start -= a;
+    out.push_back(std::move(n));
+  }
+  return out;
+}
+
+// Takes [a, b) out of a track's playlist, leaving what lies outside as one or two pieces. Locked clips stay as they are.
+static std::vector<Clip> removeRange(session::Track& t, std::vector<Clip> list, std::int64_t a, std::int64_t b) {
+  std::vector<Clip> out;
+  for (auto& c : list) {
+    const std::int64_t cs = c.start, ce = c.start + c.length;
+    if (c.locked || ce <= a || cs >= b) { out.push_back(std::move(c)); continue; }
+    if (cs < a) { Clip l = slicePiece(c, cs, a); out.push_back(std::move(l)); }
+    if (ce > b) { Clip r = slicePiece(c, b, ce); r.id = t.nextClipId++; out.push_back(std::move(r)); }
+  }
+  return out;
+}
+
 void App::copySelectedClip(bool cut) {
   session::Track* t = session_->track(selTrack_);
-  if (!t || selClip_ < 0) { setStatus(cut ? "Select a clip to cut" : "Select a clip to copy"); return; }
-  const auto list = t->source->playlist();
-  for (const auto& c : list) {
-    if (c.id != selClip_) continue;
-    clipboard_ = c; hasClipboard_ = true;
+  if (!t) return;
+  auto list = t->source->playlist();
+  const bool range = selEnd_ > selStart_;
+  if (range) {   // the selected range on the selected track: all clips in it, trimmed
+    auto got = copyRange(list, selStart_, selEnd_);
+    if (got.empty()) { setStatus("Nothing in the selected range"); return; }
+    clipboard_ = std::move(got);
+    clipboardLen_ = selEnd_ - selStart_;
+    if (cut) { t->source->setPlaylist(removeRange(*t, std::move(list), selStart_, selEnd_)); selClip_ = -1; }
+  } else {
+    const Clip* c = nullptr;
+    for (const auto& k : list) if (k.id == selClip_) c = &k;
+    if (!c) { setStatus(cut ? "Select a clip or a range to cut" : "Select a clip or a range to copy"); return; }
+    Clip n = *c; n.start = 0;
+    clipboard_ = {n};
+    clipboardLen_ = c->length;
     if (cut) { if (session_->removeClip(selTrack_, selClip_)) selClip_ = -1; }
-    setStatus(cut ? "Clip cut" : "Clip copied");
-    return;
   }
+  setStatus(std::string(cut ? "Cut " : "Copied ") + (range ? "the selected range" : "the clip"));
 }
 
 void App::pasteClip() {
-  if (!hasClipboard_) { setStatus("Nothing to paste: copy or cut a clip first"); return; }
+  if (clipboard_.empty()) { setStatus("Nothing to paste: copy or cut a clip or a range first"); return; }
   session::Track* t = session_->track(selTrack_);
   if (!t) return;
-  session::Clip n = clipboard_;
-  n.start = position();   // the clip lands at the insertion point on the selected track
-  const int id = session_->addClip(selTrack_, n);
-  if (id >= 0) { selClip_ = id; setStatus("Clip pasted"); }
+  const std::int64_t at = position();
+  auto list = removeRange(*t, t->source->playlist(), at, at + clipboardLen_);   // pasting overwrites what is underneath
+  int last = -1;
+  for (const auto& c : clipboard_) {
+    Clip n = c;
+    n.id = t->nextClipId++;
+    n.start = at + c.start;
+    last = n.id;
+    list.push_back(std::move(n));
+  }
+  t->source->setPlaylist(std::move(list));
+  selClip_ = last;
+  setStatus(clipboard_.size() == 1 ? "Pasted" : "Pasted " + std::to_string(clipboard_.size()) + " clips");
 }
 
 void App::fadeSelectedClip() {

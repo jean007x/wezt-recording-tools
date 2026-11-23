@@ -446,28 +446,44 @@ int main() {
     frames(app);
     CHECK(app.openEditorCount() == 0 && host.closedCalls == 2);
   }
-  {  // cut, copy and paste of a clip
+  {  // cut, copy and paste: a clip, and a range covering parts of clips
     App app;
     frames(app);
     auto& s = app.session();
     const auto t1 = app.selectedTrack();
     auto buf = std::make_shared<AudioBuffer>(1, 4800);
-    session::Clip c; c.audio = buf; c.start = 1000; c.length = 4800; c.name = "clip";
+    session::Clip c; c.audio = buf; c.start = 10000; c.length = 4800; c.name = "clip";
     const int id = s.addClip(t1, c);
-    auto count = [&](session::TrackId t) { return s.track(t)->source->playlist().size(); };
-    const std::size_t base = count(t1);
+    auto list = [&] { return s.track(t1)->source->playlist(); };
+    const std::size_t base = list().size();
     app.selectClip(t1, id);
     app.execute(Command::Copy);
-    CHECK(count(t1) == base);                       // copy leaves the clip where it is
-    app.execute(Command::Paste);
-    CHECK(count(t1) == base + 1);
-    app.execute(Command::Cut);                      // the pasted copy is selected
-    CHECK(count(t1) == base);
-    app.execute(Command::Paste);
-    CHECK(count(t1) == base + 1);
+    CHECK(list().size() == base);                      // copy leaves the clip where it is
+    app.execute(Command::Paste);                       // at the playhead (0)
+    CHECK(list().size() == base + 1);
+
+    app.setRange(10000, 12400);                        // a range: the first half of the original clip
+    app.execute(Command::Cut);
+    bool rightPiece = false;
+    for (const auto& k : list()) if (k.start == 12400 && k.length == 2400 && k.offset == 2400) rightPiece = true;
+    CHECK(rightPiece);                                 // what lies outside the range stays, trimmed
+    CHECK(list().size() == base + 1);
+    app.setRange(0, 0);
+    app.execute(Command::Paste);                       // 2400 frames land at 0 over the first pasted clip (overwrite)
+    bool pasted = false, rest = false;
+    for (const auto& k : list()) {
+      if (k.start == 0 && k.length == 2400) pasted = true;
+      if (k.start == 2400 && k.length == 2400 && k.offset == 2400) rest = true;
+    }
+    CHECK(pasted && rest);
+    CHECK(list().size() == base + 2);
+
+    app.setRange(0, 15000);                            // a range over several clips copies all of them
+    app.execute(Command::Copy);
     app.execute(Command::AddTrack);
-    app.execute(Command::Paste);                    // onto the new, selected track
-    CHECK(count(app.selectedTrack()) == 1);
+    app.setRange(0, 0);
+    app.execute(Command::Paste);
+    CHECK(s.track(app.selectedTrack())->source->playlist().size() == 3);
   }
   {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step
     App app;
