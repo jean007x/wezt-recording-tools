@@ -485,6 +485,48 @@ int main() {
     app.execute(Command::Paste);
     CHECK(s.track(app.selectedTrack())->source->playlist().size() == 3);
   }
+  {  // clip editing commands: mute, trim, insert silence, repeat, heal
+    App app;
+    frames(app);
+    auto& s = app.session();
+    const auto t1 = app.selectedTrack();
+    auto buf = std::make_shared<AudioBuffer>(1, 20000);
+    session::Clip c; c.audio = buf; c.start = 1000; c.offset = 0; c.length = 8000; c.name = "c";
+    const int id = s.addClip(t1, c);
+    auto list = [&] { return s.track(t1)->source->playlist(); };
+    auto find = [&](int i) { for (const auto& k : list()) if (k.id == i) return k; return session::Clip{}; };
+    app.selectClip(t1, id);
+    app.execute(Command::MuteClips);
+    CHECK(find(id).muted);
+    app.execute(Command::MuteClips);
+    CHECK(!find(id).muted);
+    app.setRange(3000, 6000);
+    app.execute(Command::TrimClipToSelection);
+    CHECK(find(id).start == 3000 && find(id).length == 3000 && find(id).offset == 2000);
+    app.setRange(0, 0);
+    app.execute(Command::TrimStartToInsertion);          // the playhead is at 0: nothing before it to cut away
+    CHECK(find(id).start == 3000 && find(id).length == 3000);
+    app.setRange(4000, 5000);                            // make room inside the clip
+    app.execute(Command::InsertSilence);
+    CHECK(list().size() == 2);                           // separated at 4000, the second part moved 1000 later
+    bool moved = false;
+    for (const auto& k : list()) if (k.start == 5000 && k.length == 2000 && k.offset == 3000) moved = true;
+    CHECK(moved);
+    app.setRange(0, 0);
+    app.selectClip(t1, id);
+    app.execute(Command::RepeatSelection);               // the first part (3000..4000) repeats right after itself
+    bool rep = false;
+    for (const auto& k : list()) if (k.start == 4000 && k.length == 1000 && k.id != id) rep = true;
+    CHECK(rep);
+    CHECK(list().size() == 3);
+    // heal: two pieces that follow on exactly become one again
+    session::Clip a = c; a.start = 30000; a.offset = 0; a.length = 3000;
+    session::Clip b = c; b.start = 33000; b.offset = 3000; b.length = 2000;
+    const int ia = s.addClip(t1, a); s.addClip(t1, b);
+    app.selectClip(t1, ia);
+    app.execute(Command::HealSeparation);
+    CHECK(find(ia).length == 5000);
+  }
   {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step
     App app;
     frames(app);

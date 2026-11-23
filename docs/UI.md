@@ -26,9 +26,10 @@ table, but the layout, drawing, colours and names are our own (see `CLEAN_ROOM_P
 
 Everything in `src/ui/commands.cpp`. Open View > Keyboard shortcuts for the live table. Commands that are
 not implemented yet appear dimmed and say so in the status bar instead of doing nothing. Not
-implemented (status at the last update): clip mute, consolidate, scrub, pencil, grouping, commit/bounce track,
-loop record, half-speed playback, pause, online playback, text-range trims, heal separation, memory-location
-recall by number. Cut, copy and paste work on a selected range (all clips in it on the selected track, trimmed to it, with fades and gain line kept on their own edges) or, with no range, on the selected clip; paste lands at the playhead on the selected track and overwrites what is underneath (locked clips are left alone). Audio does not go to the system clipboard.
+implemented (status at the last update): consolidate, scrub, pencil, grouping, commit/bounce track, loop record,
+half-speed playback, online playback, snap-to-grid toggle, restore selection, big counter, scroll to track,
+close session, open recent. Built in this round: clip mute, trim clip to selection / start or end to the playhead,
+insert silence (one second without a range), repeat, heal separation, stop record, pause, zoom toggle. Cut, copy and paste work on a selected range (all clips in it on the selected track, trimmed to it, with fades and gain line kept on their own edges) or, with no range, on the selected clip; paste lands at the playhead on the selected track and overwrites what is underneath (locked clips are left alone). Audio does not go to the system clipboard.
 
 ## Building
 

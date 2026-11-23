@@ -261,6 +261,13 @@ class App {
   std::int64_t clipboardLen_ = 0;
   void deleteSelectedClip();
   void fadeSelectedClip();
+  void muteSelectedClip();
+  void trimSelectedClip(int how);   // 0 = to the selected range, 1 = start to the playhead, 2 = end to the playhead
+  void insertSilenceAtSelection();
+  void repeatSelection();
+  void healSelectedClip();
+  bool zoomedToSession_ = false;
+  float prevFramesPerPixel_ = 0; double prevScroll_ = 0;
   void zoomTo(std::int64_t a, std::int64_t b);
   float meterLevel(const void* key, float peak);
   void openFileAction(const char* what);

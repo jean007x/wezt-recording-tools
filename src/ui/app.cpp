@@ -195,7 +195,9 @@ bool App::isImplemented(Command c) const {
     case Command::ModeShuffle: case Command::ModeSlip: case Command::ModeSpot: case Command::ModeGrid:
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
     case Command::CycleEditModes: case Command::CycleEditTools:
-    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste: case Command::SeparateClip: case Command::CreateFades:
+    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste:
+    case Command::MuteClips: case Command::TrimClipToSelection: case Command::TrimStartToInsertion: case Command::TrimEndToInsertion:
+    case Command::InsertSilence: case Command::RepeatSelection: case Command::HealSeparation: case Command::StopRecord: case Command::Pause: case Command::ZoomToggle: case Command::SeparateClip: case Command::CreateFades:
     case Command::ToggleMixEdit: case Command::ShowTransport: case Command::ZoomIn: case Command::ZoomOut: case Command::ZoomSession:
     case Command::ZoomSelection: case Command::FillWindowWithSelection: case Command::ShowAllClips:
     case Command::NewTrack: case Command::AddTrack: case Command::RemoveTrack: case Command::DuplicateTrack:
@@ -284,6 +286,19 @@ void App::execute(Command c) {
     case Command::CycleEditTools: cycleTool(); break;
     case Command::Clear: case Command::DeleteSelection: deleteSelectedClip(); break;
     case Command::Duplicate: duplicateSelectedClip(); break;
+    case Command::MuteClips: muteSelectedClip(); break;
+    case Command::TrimClipToSelection: trimSelectedClip(0); break;
+    case Command::TrimStartToInsertion: trimSelectedClip(1); break;
+    case Command::TrimEndToInsertion: trimSelectedClip(2); break;
+    case Command::InsertSilence: insertSilenceAtSelection(); break;
+    case Command::RepeatSelection: repeatSelection(); break;
+    case Command::HealSeparation: healSelectedClip(); break;
+    case Command::StopRecord: if (tr.recording()) { tr.stop(); setStatus("Recording stopped"); } else setStatus("Not recording"); break;
+    case Command::Pause: if (engine_->countingOff()) engine_->cancelCountOff(); else if (tr.playing()) tr.stop(); else tr.play(); break;
+    case Command::ZoomToggle:
+      if (!zoomedToSession_) { prevFramesPerPixel_ = framesPerPixel_; prevScroll_ = scrollFrames_; zoomTo(0, std::max<std::int64_t>(endOfSession(), 48000)); zoomedToSession_ = true; }
+      else { framesPerPixel_ = prevFramesPerPixel_; scrollFrames_ = prevScroll_; zoomedToSession_ = false; }
+      break;
     case Command::Copy: copySelectedClip(false); break;
     case Command::Cut: copySelectedClip(true); break;
     case Command::Paste: pasteClip(); break;
@@ -470,6 +485,103 @@ void App::pasteClip() {
   t->source->setPlaylist(std::move(list));
   selClip_ = last;
   setStatus(clipboard_.size() == 1 ? "Pasted" : "Pasted " + std::to_string(clipboard_.size()) + " clips");
+}
+
+void App::muteSelectedClip() {
+  session::Track* t = session_->track(selTrack_);
+  if (!t || selClip_ < 0) { setStatus("Select a clip first"); return; }
+  auto list = t->source->playlist();
+  Clip* c = findClip(list, selClip_);
+  if (!c) return;
+  c->muted = !c->muted;
+  const bool m = c->muted;
+  t->source->setPlaylist(std::move(list));
+  setStatus(m ? "Clip muted" : "Clip unmuted");
+}
+
+void App::trimSelectedClip(int how) {
+  session::Track* t = session_->track(selTrack_);
+  if (!t || selClip_ < 0) { setStatus("Select a clip first"); return; }
+  auto list = t->source->playlist();
+  Clip* c = findClip(list, selClip_);
+  if (!c) return;
+  if (c->locked) { setStatus("The clip is locked"); return; }
+  std::int64_t a = c->start, b = c->start + c->length;
+  if (how == 0) { if (selEnd_ <= selStart_) { setStatus("Select a range to trim to"); return; } a = std::max(a, selStart_); b = std::min(b, selEnd_); }
+  else if (how == 1) a = std::max(a, position());
+  else b = std::min(b, position());
+  if (b <= a) { setStatus("That would leave nothing of the clip"); return; }
+  *c = slicePiece(*c, a, b);
+  t->source->setPlaylist(std::move(list));
+  setStatus("Clip trimmed");
+}
+
+// Makes room: everything on the selected track from the start of the selection (or the playhead) moves later by the length of the
+// selection (one second without a range); a clip that spans the insertion point is separated there.
+void App::insertSilenceAtSelection() {
+  session::Track* t = session_->track(selTrack_);
+  if (!t) return;
+  const bool range = selEnd_ > selStart_;
+  const std::int64_t at = range ? selStart_ : position();
+  const std::int64_t len = range ? selEnd_ - selStart_ : static_cast<std::int64_t>(session_->sampleRate());   // no range: one second
+  std::vector<Clip> out;
+  for (auto& c : t->source->playlist()) {
+    if (c.locked) { out.push_back(std::move(c)); continue; }
+    const std::int64_t cs = c.start, ce = c.start + c.length;
+    if (ce <= at) { out.push_back(std::move(c)); continue; }
+    if (cs >= at) { c.start += len; out.push_back(std::move(c)); continue; }
+    Clip l = slicePiece(c, cs, at);
+    Clip r = slicePiece(c, at, ce);
+    r.id = t->nextClipId++;
+    r.start += len;
+    out.push_back(std::move(l)); out.push_back(std::move(r));
+  }
+  t->source->setPlaylist(std::move(out));
+  char msg[64];
+  std::snprintf(msg, sizeof msg, "Inserted %.2f s of silence", static_cast<double>(len) / session_->sampleRate());
+  setStatus(msg);
+}
+
+// Repeats the selected range (or clip) once, right after itself.
+void App::repeatSelection() {
+  session::Track* t = session_->track(selTrack_);
+  if (!t) return;
+  auto list = t->source->playlist();
+  std::int64_t a, b;
+  if (selEnd_ > selStart_) { a = selStart_; b = selEnd_; }
+  else {
+    const Clip* c = nullptr;
+    for (const auto& k : list) if (k.id == selClip_) c = &k;
+    if (!c) { setStatus("Select a clip or a range to repeat"); return; }
+    a = c->start; b = c->start + c->length;
+  }
+  auto got = copyRange(list, a, b);
+  if (got.empty()) { setStatus("Nothing in the selection to repeat"); return; }
+  list = removeRange(*t, std::move(list), b, b + (b - a));
+  for (auto& c : got) { c.id = t->nextClipId++; c.start += b; list.push_back(std::move(c)); }
+  t->source->setPlaylist(std::move(list));
+  setStatus("Repeated once");
+}
+
+// Joins the selected clip with the clip right after it when they are cuts of the same audio that follow on exactly.
+void App::healSelectedClip() {
+  session::Track* t = session_->track(selTrack_);
+  if (!t || selClip_ < 0) { setStatus("Select a clip first"); return; }
+  auto list = t->source->playlist();
+  Clip* c = findClip(list, selClip_);
+  if (!c) return;
+  for (std::size_t i = 0; i < list.size(); ++i) {
+    Clip& n = list[i];
+    if (n.id == c->id || n.audio != c->audio || n.start != c->start + c->length || n.offset != c->offset + c->length || n.muted != c->muted) continue;
+    c->length += n.length;
+    c->fadeOut = n.fadeOut;
+    const int gone = n.id;
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const Clip& k) { return k.id == gone; }), list.end());
+    t->source->setPlaylist(std::move(list));
+    setStatus("Separation healed");
+    return;
+  }
+  setStatus("No continuing clip to heal with");
 }
 
 void App::fadeSelectedClip() {
