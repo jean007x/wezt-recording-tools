@@ -527,6 +527,27 @@ int main() {
     app.execute(Command::HealSeparation);
     CHECK(find(ia).length == 5000);
   }
+  {  // selection history, snap toggle, grouping, scroll to track, big counter
+    App app;
+    frames(app);
+    app.setRange(1000, 2000); frames(app);
+    app.setRange(5000, 6000); frames(app);
+    app.execute(Command::RestoreSelection);
+    CHECK(app.selectionStart() == 1000 && app.selectionEnd() == 2000);
+    app.execute(Command::ModeSnapToGrid);
+    app.execute(Command::ModeSnapToGrid);
+    app.execute(Command::AddTrack);
+    app.execute(Command::AddTrack);
+    const std::size_t g0 = app.groupCount();
+    app.execute(Command::GroupTracks);
+    CHECK(app.groupCount() == g0 + 1);
+    app.execute(Command::ScrollToTrack);
+    app.execute(Command::ShowBigCounter);
+    frames(app, 2);
+    app.execute(Command::ShowBigCounter);
+    app.execute(Command::ToolScrubber); app.execute(Command::ToolPencil);
+    CHECK(app.tool() == Tool::Pencil);
+  }
   {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step
     App app;
     frames(app);

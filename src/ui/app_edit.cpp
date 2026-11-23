@@ -67,6 +67,23 @@ int App::addGroup(const std::string& name, const std::vector<TrackId>& members) 
   groups_.push_back(g);
   return static_cast<int>(groups_.size() - 1);
 }
+void App::drawBigCounter() {
+  ImGui::SetNextWindowSize(ImVec2(520, 150), ImGuiCond_FirstUseEver);
+  if (!ImGui::Begin("Big Counter", &showBigCounter_)) { ImGui::End(); return; }
+  const double rate = session_->sampleRate();
+  const std::int64_t pos = position();
+  const std::string main = timecode_ ? barsBeats(pos, rate, tempo_, beatsPerBar_) : timecode(pos, rate);
+  const float avail = ImGui::GetContentRegionAvail().x;
+  const float base = ImGui::GetFontSize() * static_cast<float>(main.size()) * 0.55f;
+  ImGui::SetWindowFontScale(std::clamp(avail / std::max(1.f, base), 1.f, 8.f));
+  ImGui::PushStyleColor(ImGuiCol_Text, st::rgba(0.35f, 1.f, 0.45f));
+  ImGui::TextUnformatted(main.c_str());
+  ImGui::PopStyleColor();
+  ImGui::SetWindowFontScale(1.f);
+  if (ImGui::IsItemClicked()) timecode_ = !timecode_;
+  ImGui::End();
+}
+
 void App::nudgeSelectedClip(int direction) {
   session::Track* t = session_->track(selTrack_);
   if (!t || selClip_ < 0) { setStatus("Select a clip to nudge"); return; }
@@ -840,6 +857,13 @@ void App::drawEdit() {
       if (tool == Tool::Zoomer) {
         framesPerPixel_ = std::clamp(ImGui::GetIO().KeyAlt ? framesPerPixel_ * 2.f : framesPerPixel_ * 0.5f, 2.f, 200000.f);
         scrollFrames_ = std::max(0.0, static_cast<double>(f) - static_cast<double>(mouse.x - timelineX) * framesPerPixel_);
+      } else if (tool == Tool::Pencil && c) {   // draw the clip's gain line freehand: top of the lane +12 dB, bottom -36 dB
+        dragKind_ = 6; dragging_ = true; pencilLast_ = -1;
+        dragLaneTop_ = lanesTop + static_cast<float>(row - firstIdx) * laneH; dragLaneH_ = laneH;
+      } else if (tool == Tool::Scrubber) {   // drag to hear the audio under the pointer
+        dragKind_ = 5; dragging_ = true;
+        engine_->transport().locate(f);
+        if (!engine_->transport().playing()) engine_->transport().play();
       } else if (c && (tool == Tool::Grabber || tool == Tool::Trimmer)) {
         dragOrigin_ = f; dragClipStart_ = c->start; dragClipOffset_ = c->offset; dragClipLength_ = c->length;
         const float x0 = frameToX(c->start), x1 = frameToX(c->start + c->length);
@@ -853,7 +877,26 @@ void App::drawEdit() {
     }
   }
   if (dragging_) {
-    if (!ImGui::IsMouseDown(0)) { dragging_ = false; dragKind_ = 0; }
+    if (!ImGui::IsMouseDown(0)) { if (dragKind_ == 5) engine_->transport().stop(); dragging_ = false; dragKind_ = 0; }
+    else if (dragKind_ == 5) engine_->transport().locate(xToFrame(mouse.x));
+    else if (dragKind_ == 6) {
+      session::Track* t = session_->track(selTrack_);
+      if (t) {
+        auto list = t->source->playlist();
+        const std::int64_t f = xToFrame(mouse.x);
+        for (Clip& c : list) if (c.id == selClip_ && f >= c.start && f < c.start + c.length) {
+          const float u = std::clamp((mouse.y - dragLaneTop_) / std::max(1.f, dragLaneH_), 0.f, 1.f);
+          const float db = 12.f - u * 48.f;
+          const std::int64_t rel = f - c.start;
+          if (pencilLast_ < 0 || std::llabs(rel - pencilLast_) >= static_cast<std::int64_t>(framesPerPixel_ * 3.f)) {
+            c.gainEnv.add(rel, db);
+            pencilLast_ = rel;
+            t->source->setPlaylist(std::move(list));
+          }
+          break;
+        }
+      }
+    }
     else if (dragKind_ == 4) {
       const std::int64_t f = snap(xToFrame(mouse.x));
       selStart_ = std::min(dragOrigin_, f); selEnd_ = std::max(dragOrigin_, f);

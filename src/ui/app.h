@@ -113,6 +113,8 @@ class App {
   // Clip selection (for the edit commands)
   void selectClip(session::TrackId t, int clipId) { selTrack_ = t; selClip_ = clipId; }
   void setRange(std::int64_t a, std::int64_t b) { selStart_ = a; selEnd_ = b; }
+  std::int64_t selectionStart() const { return selStart_; }
+  std::int64_t selectionEnd() const { return selEnd_; }
   instruments::Sampler* samplerOn(session::TrackId t);
   // One mono object channel per track, with its position, into an ADM BWF file (renders each track alone).
   bool exportAdm(const std::string& path, std::string* message);
@@ -262,6 +264,11 @@ class App {
   void deleteSelectedClip();
   void fadeSelectedClip();
   void muteSelectedClip();
+  void drawBigCounter();
+  void groupTracksCommand();
+  bool showBigCounter_ = false, snapToGrid_ = false;
+  std::int64_t prevSelStart_ = 0, prevSelEnd_ = 0, lastSelStart_ = 0, lastSelEnd_ = 0;
+  void trackSelectionHistory();
   void trimSelectedClip(int how);   // 0 = to the selected range, 1 = start to the playhead, 2 = end to the playhead
   void insertSilenceAtSelection();
   void repeatSelection();
@@ -298,6 +305,8 @@ class App {
   const void* tempoSession_ = nullptr;   // the session whose tempo/beats the two fields above were last synced with
   bool followPlayhead_ = true, showTransportBar_ = true, metronome_ = false;
   bool dragging_ = false;
+  float dragLaneTop_ = 0, dragLaneH_ = 1;   // the lane under a pencil drag
+  std::int64_t pencilLast_ = -1;
   int dragKind_ = 0;               // 0 none, 1 move clip, 2 trim start, 3 trim end, 4 select range
   std::int64_t dragOrigin_ = 0, dragClipStart_ = 0, dragClipOffset_ = 0, dragClipLength_ = 0;
   bool timecode_ = true;

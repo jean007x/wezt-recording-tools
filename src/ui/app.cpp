@@ -146,7 +146,7 @@ std::int64_t App::position() const { return engine_->transport().position(); }
 std::int64_t App::gridFrames() const { return static_cast<std::int64_t>(session_->sampleRate() * 60.0 / static_cast<double>(std::max(20.f, tempo_)) * static_cast<double>(kGridBeats[gridIdx_ % 5])); }
 std::int64_t App::nudgeFrames() const { return std::max<std::int64_t>(1, static_cast<std::int64_t>(session_->sampleRate() * kNudgeMs[nudgeIdx_ % 5] / 1000.0)); }
 std::int64_t App::snap(std::int64_t f) const {
-  if (mode_ != EditMode::Grid) return std::max<std::int64_t>(0, f);
+  if (mode_ != EditMode::Grid && !snapToGrid_) return std::max<std::int64_t>(0, f);
   const std::int64_t g = std::max<std::int64_t>(1, gridFrames());
   return std::max<std::int64_t>(0, (f + g / 2) / g * g);
 }
@@ -194,10 +194,13 @@ bool App::isImplemented(Command c) const {
     case Command::Metronome: case Command::CountOff: case Command::PreRoll: case Command::QuickPunch: case Command::PunchRecord:
     case Command::ModeShuffle: case Command::ModeSlip: case Command::ModeSpot: case Command::ModeGrid:
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
+    case Command::ToolScrubber: case Command::ToolPencil:
     case Command::CycleEditModes: case Command::CycleEditTools:
     case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste:
     case Command::MuteClips: case Command::TrimClipToSelection: case Command::TrimStartToInsertion: case Command::TrimEndToInsertion:
-    case Command::InsertSilence: case Command::RepeatSelection: case Command::HealSeparation: case Command::StopRecord: case Command::Pause: case Command::ZoomToggle: case Command::SeparateClip: case Command::CreateFades:
+    case Command::InsertSilence: case Command::RepeatSelection: case Command::HealSeparation: case Command::StopRecord: case Command::Pause: case Command::ZoomToggle:
+    case Command::CloseSession: case Command::OpenRecent: case Command::ShowBigCounter: case Command::ModeSnapToGrid: case Command::RestoreSelection:
+    case Command::GroupTracks: case Command::ScrollToTrack: case Command::SeparateClip: case Command::CreateFades:
     case Command::ToggleMixEdit: case Command::ShowTransport: case Command::ZoomIn: case Command::ZoomOut: case Command::ZoomSession:
     case Command::ZoomSelection: case Command::FillWindowWithSelection: case Command::ShowAllClips:
     case Command::NewTrack: case Command::AddTrack: case Command::RemoveTrack: case Command::DuplicateTrack:
@@ -283,10 +286,30 @@ void App::execute(Command c) {
     case Command::ToolSelector: tool_ = Tool::Selector; break;
     case Command::ToolGrabber: tool_ = Tool::Grabber; break;
     case Command::ToolSmart: tool_ = Tool::Smart; break;
+    case Command::ToolScrubber: tool_ = Tool::Scrubber; break;
+    case Command::ToolPencil: tool_ = Tool::Pencil; break;
     case Command::CycleEditTools: cycleTool(); break;
     case Command::Clear: case Command::DeleteSelection: deleteSelectedClip(); break;
     case Command::Duplicate: duplicateSelectedClip(); break;
     case Command::MuteClips: muteSelectedClip(); break;
+    case Command::CloseSession: openFileAction("new"); break;
+    case Command::OpenRecent:
+      if (prefs_.recent.empty()) { setStatus("No recent sessions yet"); break; }
+      openFileAction("open"); dialogPath_ = prefs_.recent.front();
+      break;
+    case Command::ShowBigCounter: showBigCounter_ = !showBigCounter_; break;
+    case Command::ModeSnapToGrid: snapToGrid_ = !snapToGrid_; setStatus(snapToGrid_ ? "Snap to grid on" : "Snap to grid off"); break;
+    case Command::RestoreSelection:
+      if (prevSelEnd_ > prevSelStart_) { const auto a = prevSelStart_, b = prevSelEnd_; selStart_ = a; selEnd_ = b; setStatus("Previous selection restored"); }
+      else setStatus("No earlier selection to restore");
+      break;
+    case Command::GroupTracks: groupTracksCommand(); break;
+    case Command::ScrollToTrack: {
+      int i = 0, at = 0;
+      for (auto id : session_->trackIds()) { if (trackHidden(id)) continue; if (id == selTrack_) at = i; ++i; }
+      firstTrack_ = at; setStatus("Scrolled to the selected track");
+      break;
+    }
     case Command::TrimClipToSelection: trimSelectedClip(0); break;
     case Command::TrimStartToInsertion: trimSelectedClip(1); break;
     case Command::TrimEndToInsertion: trimSelectedClip(2); break;
@@ -487,6 +510,27 @@ void App::pasteClip() {
   setStatus(clipboard_.size() == 1 ? "Pasted" : "Pasted " + std::to_string(clipboard_.size()) + " clips");
 }
 
+// Remembers the selection before the latest change so Restore Selection can bring it back.
+void App::trackSelectionHistory() {
+  if (selStart_ == lastSelStart_ && selEnd_ == lastSelEnd_) return;
+  if (lastSelEnd_ > lastSelStart_) { prevSelStart_ = lastSelStart_; prevSelEnd_ = lastSelEnd_; }
+  lastSelStart_ = selStart_; lastSelEnd_ = selEnd_;
+}
+
+// Groups the record-armed tracks (or, with fewer than two armed, the selected track and its neighbour below, or above for the last track).
+void App::groupTracksCommand() {
+  std::vector<TrackId> m;
+  for (auto id : session_->trackIds()) if (session_->track(id)->source->armed()) m.push_back(id);
+  if (m.size() < 2) {
+    m.clear();
+    const auto ids = session_->trackIds();
+    for (std::size_t i = 0; i < ids.size(); ++i) if (ids[i] == selTrack_) { m.push_back(ids[i]); if (i + 1 < ids.size()) m.push_back(ids[i + 1]); else if (i > 0) m.push_back(ids[i - 1]); }
+  }
+  if (m.size() < 2) { setStatus("Arm two or more tracks, or select a track in a session with at least two, to group them"); return; }
+  const int g = addGroup("GROUP " + std::to_string(groups_.size() + 1), m);
+  setStatus("Grouped " + std::to_string(m.size()) + " tracks in group " + std::string(1, groups_[static_cast<std::size_t>(g)].letter));
+}
+
 void App::muteSelectedClip() {
   session::Track* t = session_->track(selTrack_);
   if (!t || selClip_ < 0) { setStatus("Select a clip first"); return; }
@@ -651,6 +695,14 @@ void App::drawFileDialog() {
     const std::string& k = dialogKind_;
     ImGui::TextUnformatted(k == "new" ? "Start a new session (unsaved changes are lost)" : k == "open" ? "Open session" : k == "save" ? "Save session as" : k == "bounce" ? "Bounce the mix to a WAV file" : "Import an audio file at the cursor");
     if (k != "new") { ImGui::SetNextItemWidth(420); ImGui::InputText("Path", &dialogPath_); }
+    if (k == "open" && !prefs_.recent.empty()) {
+      ImGui::TextDisabled("Recent sessions");
+      for (std::size_t i = 0; i < prefs_.recent.size(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        if (ImGui::Selectable(prefs_.recent[i].c_str(), dialogPath_ == prefs_.recent[i])) dialogPath_ = prefs_.recent[i];
+        ImGui::PopID();
+      }
+    }
     if (!dialogMessage_.empty()) ImGui::TextColored(ImVec4(1.f, 0.55f, 0.4f, 1.f), "%s", dialogMessage_.c_str());
     if (ImGui::Button("OK")) {
       std::string err;
@@ -668,7 +720,7 @@ void App::drawFileDialog() {
           if (device_ && _was) { device_->stop(); std::string e2; device_->open(audio::AudioConfig{}, engine_.get(), &e2); }
         });
         ok = true;
-      } else if (k == "save") { ok = session_->save(dialogPath_, &err); if (ok) { sessionName_ = nameOf(dialogPath_); saveMidiParts(dialogPath_); } }
+      } else if (k == "save") { ok = session_->save(dialogPath_, &err); if (ok) { sessionName_ = nameOf(dialogPath_); saveMidiParts(dialogPath_); addRecent(prefs_, dialogPath_); savePrefs(prefs_); } }
       else if (k == "open") {
         auto loaded = session::Session::load(dialogPath_, [](const plugins::PluginDescriptor& d) -> std::unique_ptr<plugins::IPluginInstance> { return makeInsert(d); }, &err);
         if (loaded) {
@@ -686,6 +738,7 @@ void App::drawFileDialog() {
           ok = true;
           midiParts_.clear(); selPart_ = -1; roll_.load({});
           loadMidiParts(dialogPath_);
+          addRecent(prefs_, dialogPath_); savePrefs(prefs_);
           if (!session_->warnings().empty()) setStatus(session_->warnings().front());
         }
       } else if (k == "bounce") {
@@ -769,6 +822,7 @@ void App::frame() {
   engine_->metronome().setBeatsPerBar(beatsPerBar_);
   handleKeys();
   commitRecordedTakes();
+  trackSelectionHistory();
   watchEdits();
   drawMenu();
   const ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -821,6 +875,7 @@ void App::frame() {
   if (showSampler_) drawSamplerWindow();
   if (showImmersive_) drawImmersiveWindow();
   if (showMemory_) drawMemoryWindow();
+  if (showBigCounter_) drawBigCounter();
   if (showClips_) drawClipsWindow();
   if (showVoiceBank_) drawVoiceBankWindow();
   if (showPlugParams_) drawPluginParamsWindow();
