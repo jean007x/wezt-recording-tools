@@ -494,7 +494,7 @@ int main() {
     session::Clip c; c.audio = buf; c.start = 1000; c.offset = 0; c.length = 8000; c.name = "c";
     const int id = s.addClip(t1, c);
     auto list = [&] { return s.track(t1)->source->playlist(); };
-    auto find = [&](int i) { for (const auto& k : list()) if (k.id == i) return k; return session::Clip{}; };
+    auto find = [&](int i) -> session::Clip { for (const auto& k : list()) if (k.id == i) return k; session::Clip none; return none; };
     app.selectClip(t1, id);
     app.execute(Command::MuteClips);
     CHECK(find(id).muted);
