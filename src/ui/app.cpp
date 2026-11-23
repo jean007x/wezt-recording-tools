@@ -195,7 +195,7 @@ bool App::isImplemented(Command c) const {
     case Command::ModeShuffle: case Command::ModeSlip: case Command::ModeSpot: case Command::ModeGrid:
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
     case Command::CycleEditModes: case Command::CycleEditTools:
-    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::SeparateClip: case Command::CreateFades:
+    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste: case Command::SeparateClip: case Command::CreateFades:
     case Command::ToggleMixEdit: case Command::ShowTransport: case Command::ZoomIn: case Command::ZoomOut: case Command::ZoomSession:
     case Command::ZoomSelection: case Command::FillWindowWithSelection: case Command::ShowAllClips:
     case Command::NewTrack: case Command::AddTrack: case Command::RemoveTrack: case Command::DuplicateTrack:
@@ -284,6 +284,9 @@ void App::execute(Command c) {
     case Command::CycleEditTools: cycleTool(); break;
     case Command::Clear: case Command::DeleteSelection: deleteSelectedClip(); break;
     case Command::Duplicate: duplicateSelectedClip(); break;
+    case Command::Copy: copySelectedClip(false); break;
+    case Command::Cut: copySelectedClip(true); break;
+    case Command::Paste: pasteClip(); break;
     case Command::SeparateClip: splitSelectedClip(); break;
     case Command::Undo: if (!undoEdit()) setStatus("Nothing to undo"); break;
     case Command::Redo: if (!redoEdit()) setStatus("Nothing to redo"); break;
@@ -379,6 +382,29 @@ void App::duplicateSelectedClip() {
   t->source->setPlaylist(std::move(list));
   selClip_ = n.id;
   setStatus("Clip duplicated");
+}
+
+void App::copySelectedClip(bool cut) {
+  session::Track* t = session_->track(selTrack_);
+  if (!t || selClip_ < 0) { setStatus(cut ? "Select a clip to cut" : "Select a clip to copy"); return; }
+  const auto list = t->source->playlist();
+  for (const auto& c : list) {
+    if (c.id != selClip_) continue;
+    clipboard_ = c; hasClipboard_ = true;
+    if (cut) { if (session_->removeClip(selTrack_, selClip_)) selClip_ = -1; }
+    setStatus(cut ? "Clip cut" : "Clip copied");
+    return;
+  }
+}
+
+void App::pasteClip() {
+  if (!hasClipboard_) { setStatus("Nothing to paste: copy or cut a clip first"); return; }
+  session::Track* t = session_->track(selTrack_);
+  if (!t) return;
+  session::Clip n = clipboard_;
+  n.start = position();   // the clip lands at the insertion point on the selected track
+  const int id = session_->addClip(selTrack_, n);
+  if (id >= 0) { selClip_ = id; setStatus("Clip pasted"); }
 }
 
 void App::fadeSelectedClip() {

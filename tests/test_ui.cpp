@@ -446,6 +446,29 @@ int main() {
     frames(app);
     CHECK(app.openEditorCount() == 0 && host.closedCalls == 2);
   }
+  {  // cut, copy and paste of a clip
+    App app;
+    frames(app);
+    auto& s = app.session();
+    const auto t1 = app.selectedTrack();
+    auto buf = std::make_shared<AudioBuffer>(1, 4800);
+    session::Clip c; c.audio = buf; c.start = 1000; c.length = 4800; c.name = "clip";
+    const int id = s.addClip(t1, c);
+    auto count = [&](session::TrackId t) { return s.track(t)->source->playlist().size(); };
+    const std::size_t base = count(t1);
+    app.selectClip(t1, id);
+    app.execute(Command::Copy);
+    CHECK(count(t1) == base);                       // copy leaves the clip where it is
+    app.execute(Command::Paste);
+    CHECK(count(t1) == base + 1);
+    app.execute(Command::Cut);                      // the pasted copy is selected
+    CHECK(count(t1) == base);
+    app.execute(Command::Paste);
+    CHECK(count(t1) == base + 1);
+    app.execute(Command::AddTrack);
+    app.execute(Command::Paste);                    // onto the new, selected track
+    CHECK(count(app.selectedTrack()) == 1);
+  }
   {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step
     App app;
     frames(app);

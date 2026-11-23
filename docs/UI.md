@@ -26,8 +26,9 @@ table, but the layout, drawing, colours and names are our own (see `CLEAN_ROOM_P
 
 Everything in `src/ui/commands.cpp`. Open View > Keyboard shortcuts for the live table. Commands that are
 not implemented yet appear dimmed and say so in the status bar instead of doing nothing. Not
-implemented: undo/redo, cut/copy/paste, clip mute, strip silence, consolidate, scrub, pencil, metronome,
-grouping, commit/bounce track.
+implemented (status at the last update): clip mute, consolidate, scrub, pencil, grouping, commit/bounce track,
+loop record, half-speed playback, pause, online playback, text-range trims, heal separation, memory-location
+recall by number. Cut, copy and paste work on one selected audio clip (paste lands at the playhead on the selected track).
 
 ## Building
 

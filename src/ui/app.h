@@ -253,6 +253,10 @@ class App {
   void addTrackQuick(bool mono);
   void splitSelectedClip();
   void duplicateSelectedClip();
+  void copySelectedClip(bool cut);
+  void pasteClip();
+  bool hasClipboard_ = false;
+  session::Clip clipboard_;   // the clip last copied or cut (it shares the audio data, nothing is duplicated in memory)
   void deleteSelectedClip();
   void fadeSelectedClip();
   void zoomTo(std::int64_t a, std::int64_t b);
