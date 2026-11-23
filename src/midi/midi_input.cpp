@@ -16,10 +16,39 @@
 namespace wezt::midi {
 
 bool MidiParser::feed(std::uint8_t b, MidiMessage& out) {
-  if (b >= 0xF8) return false;                        // realtime: may appear anywhere, never disturbs the message in progress
+  if (b >= 0xF8) {                                    // realtime: may appear anywhere, never disturbs the message in progress
+    if (b == 0xFA || b == 0xFB) { out = MidiMessage{}; out.type = MidiMessage::Transport; out.a = MidiMessage::kPlay; return true; }
+    if (b == 0xFC) { out = MidiMessage{}; out.type = MidiMessage::Transport; out.a = MidiMessage::kStop; return true; }
+    return false;
+  }
   if (b & 0x80) {
-    if (b == 0xF0) { inSysex_ = true; status_ = 0; have_ = 0; return false; }
-    if (b == 0xF7) { inSysex_ = false; return false; }
+    if (b == 0xF0) { inSysex_ = true; status_ = 0; have_ = 0; sysexLen_ = 0; return false; }
+    if (b == 0xF7) {
+      const bool was = inSysex_;
+      inSysex_ = false;
+      // MIDI Machine Control: 7F <device> 06 <command> [...]; the device number is ignored (any device, or all call)
+      if (!was || sysexLen_ < 4 || sysex_[0] != 0x7F || sysex_[2] != 0x06) return false;
+      out = MidiMessage{};
+      out.type = MidiMessage::Transport;
+      switch (sysex_[3]) {
+        case 0x01: out.a = MidiMessage::kStop; return true;
+        case 0x02: case 0x03: out.a = MidiMessage::kPlay; return true;       // play, deferred play
+        case 0x06: out.a = MidiMessage::kRecord; return true;                // record strobe
+        case 0x07: out.a = MidiMessage::kRecordExit; return true;
+        case 0x09: out.a = MidiMessage::kPause; return true;
+        case 0x44:                                                           // locate, "target" form: 44 06 01 hr mn sc fr sf
+          if (sysexLen_ < 10 || sysex_[4] != 0x06 || sysex_[5] != 0x01) return false;
+          {
+            const int hr = sysex_[6] & 0x1F, type = (sysex_[6] >> 5) & 3;
+            const double fps = type == 0 ? 24.0 : type == 1 ? 25.0 : type == 2 ? 29.97 : 30.0;
+            const double sec = hr * 3600.0 + sysex_[7] * 60.0 + sysex_[8] + sysex_[9] / fps + (sysexLen_ > 10 ? sysex_[10] : 0) / (fps * 100.0);
+            out.a = MidiMessage::kLocate;
+            out.arg = static_cast<std::uint32_t>(sec * 1000.0 + 0.5);
+          }
+          return true;
+        default: return false;
+      }
+    }
     if (b >= 0xF0) { inSysex_ = false; status_ = 0; have_ = 0; return false; }   // other system common: ignored
     inSysex_ = false;
     status_ = b; have_ = 0;
@@ -27,7 +56,8 @@ bool MidiParser::feed(std::uint8_t b, MidiMessage& out) {
     need_ = (hi == 0xC || hi == 0xD) ? 1 : 2;
     return false;
   }
-  if (inSysex_ || status_ == 0) return false;          // stray data byte
+  if (inSysex_) { if (sysexLen_ < 16) sysex_[sysexLen_++] = b; return false; }
+  if (status_ == 0) return false;                       // stray data byte
   data_[have_++] = b;
   if (have_ < need_) return false;
   have_ = 0;                                           // running status: the next data bytes reuse status_

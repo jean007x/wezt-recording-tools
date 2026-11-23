@@ -200,7 +200,7 @@ bool App::isImplemented(Command c) const {
     case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste:
     case Command::MuteClips: case Command::TrimClipToSelection: case Command::TrimStartToInsertion: case Command::TrimEndToInsertion:
     case Command::InsertSilence: case Command::RepeatSelection: case Command::HealSeparation: case Command::StopRecord: case Command::Pause: case Command::ZoomToggle:
-    case Command::PlayHalfSpeed: case Command::LoopRecord: case Command::ConsolidateClip: case Command::BounceTrack: case Command::CommitTrack:
+    case Command::OnlinePlayback: case Command::PlayHalfSpeed: case Command::LoopRecord: case Command::ConsolidateClip: case Command::BounceTrack: case Command::CommitTrack:
     case Command::CloseSession: case Command::OpenRecent: case Command::ShowBigCounter: case Command::ModeSnapToGrid: case Command::RestoreSelection:
     case Command::GroupTracks: case Command::ScrollToTrack: case Command::SeparateClip: case Command::CreateFades:
     case Command::ToggleMixEdit: case Command::ShowTransport: case Command::ZoomIn: case Command::ZoomOut: case Command::ZoomSession:
@@ -305,6 +305,11 @@ void App::execute(Command c) {
     }
     case Command::PlayHalfSpeed:
       if (tr.playing()) tr.stop(); else { engine_->playHalfSpeed(); setStatus("Playing at half speed (an octave down)"); }
+      break;
+    case Command::OnlinePlayback:
+      online_ = !online_;
+      if (online_ && !hwMidi_) setStatus("Online: no MIDI input is connected yet; connect a device that sends MIDI Machine Control or start/stop");
+      else setStatus(online_ ? "Online: the transport follows MIDI Machine Control and start/stop from " + hwMidi_->name() : std::string("Online off"));
       break;
     case Command::MuteClips: muteSelectedClip(); break;
     case Command::ConsolidateClip: {

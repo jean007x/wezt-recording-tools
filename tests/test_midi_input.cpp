@@ -21,6 +21,24 @@ static std::vector<MidiMessage> parseAll(const std::vector<int>& bytes) {
 }
 
 int main() {
+  {  // transport: MIDI Machine Control and the realtime start/stop bytes
+    auto v = parseAll({0xF0, 0x7F, 0x7F, 0x06, 0x02, 0xF7, 0xF0, 0x7F, 0x10, 0x06, 0x01, 0xF7, 0xFA, 0xFC});
+    CHECK(v.size() == 4);
+    if (v.size() == 4) {
+      CHECK(v[0].type == MidiMessage::Transport && v[0].a == MidiMessage::kPlay);
+      CHECK(v[1].type == MidiMessage::Transport && v[1].a == MidiMessage::kStop);
+      CHECK(v[2].a == MidiMessage::kPlay && v[3].a == MidiMessage::kStop);
+    }
+    // locate to 00:01:30:12 at 24 fps: 90.5 s
+    auto l = parseAll({0xF0, 0x7F, 0x7F, 0x06, 0x44, 0x06, 0x01, 0x00, 0x01, 30, 12, 0, 0xF7});
+    CHECK(l.size() == 1 && l[0].a == MidiMessage::kLocate && l[0].arg >= 90490 && l[0].arg <= 90510);
+    auto r = parseAll({0xF0, 0x7F, 0x7F, 0x06, 0x06, 0xF7, 0xF0, 0x7F, 0x7F, 0x06, 0x07, 0xF7, 0xF0, 0x7F, 0x7F, 0x06, 0x09, 0xF7});
+    CHECK(r.size() == 3 && r[0].a == MidiMessage::kRecord && r[1].a == MidiMessage::kRecordExit && r[2].a == MidiMessage::kPause);
+    auto o = parseAll({0xF0, 0x41, 0x10, 0x42, 0xF7, 0x90, 60, 100});   // another maker's sysex stays ignored
+    CHECK(o.size() == 1 && o[0].type == MidiMessage::NoteOn);
+    auto mid = parseAll({0x90, 60, 0xFA, 100});                          // start in the middle of a note message
+    CHECK(mid.size() == 2 && mid[0].type == MidiMessage::Transport && mid[1].type == MidiMessage::NoteOn);
+  }
   {  // plain note on / off
     auto v = parseAll({0x90, 60, 100, 0x80, 60, 0});
     CHECK(v.size() == 2);

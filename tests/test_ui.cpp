@@ -122,13 +122,18 @@ int main() {
     CHECK(!tr.recording() && app.status().find("Arm") != std::string::npos);
     press(app, ImGuiKey_Z, true);                            // Ctrl+Z with nothing recorded yet: says so, changes nothing
     CHECK(app.status().find("Nothing to undo") != std::string::npos);
-    app.execute(Command::OnlinePlayback);                    // still not built (needs an external transport): said so
-    CHECK(app.status().find("not available") != std::string::npos);
+    app.execute(Command::OnlinePlayback);                    // Online without a MIDI input: says what is missing
+    CHECK(app.status().find("Online") != std::string::npos);
+    app.execute(Command::OnlinePlayback);
     // typing in a text field must not trigger shortcuts
     io.AddInputCharacter('x');
     app.setView(MainView::Edit);
     CHECK(app.view() == MainView::Edit);
-    CHECK(!app.isImplemented(Command::OnlinePlayback) && app.isImplemented(Command::PlayStop) && app.isImplemented(Command::Undo));
+    {
+      int missing = 0;
+      for (const auto& ci : allCommands()) if (!app.isImplemented(ci.id)) { ++missing; std::printf("not implemented: %s\n", ci.name); }
+      CHECK(missing == 0);                                   // every command in the table does something
+    }
 
     // ---- clip editing
     session::Session& ss = app.session();
@@ -570,6 +575,64 @@ int main() {
     app.execute(Command::BounceTrack);
     CHECK(s.trackCount() == tracks + 1);
     std::filesystem::remove_all(dir);
+  }
+  {  // the Scrubber and Pencil tools with a real mouse on the timeline
+    App app;
+    app.setView(MainView::Edit);
+    frames(app, 3);
+    auto& s = app.session();
+    ImGuiIO& io = ImGui::GetIO();
+    const auto t1 = s.trackIds().front();   // the first lane
+    auto buf = std::make_shared<AudioBuffer>(1, 96000);
+    session::Clip c; c.audio = buf; c.start = 0; c.length = 96000; c.name = "long";
+    const int id = s.addClip(t1, c);
+    app.selectClip(t1, id);
+    frames(app, 3);
+    const auto g = app.timelineGeometry();
+    CHECK(g.laneH > 20.f && g.framesPerPixel > 0.f);
+    std::printf("tracks %zu clip id %d geo x0 %.0f top %.0f laneH %.0f fpp %.1f first %d\n", s.trackIds().size(), id, g.x0, g.lanesTop, g.laneH, g.framesPerPixel, g.firstRow);
+    const float x0 = g.x0 + static_cast<float>((20000.0 - g.scroll) / g.framesPerPixel);
+    const float x1 = g.x0 + static_cast<float>((40000.0 - g.scroll) / g.framesPerPixel);
+    const float yMid = g.lanesTop + g.laneH * 0.5f;   // the selected track is the first lane after any earlier ones
+    auto& tr = app.engine().transport();
+    // scrubber: the song plays while the button is held and stops on release
+    app.execute(Command::ToolScrubber);
+    io.AddMousePosEvent(x0, yMid); frames(app, 2);
+    io.AddMouseButtonEvent(0, true); frames(app, 2);
+    const bool playingDown = tr.playing();
+    io.AddMousePosEvent(x1, yMid); frames(app, 2);
+    io.AddMouseButtonEvent(0, false); frames(app, 2);
+    std::printf("scrubber: playing while held %d, after release %d\n", playingDown, tr.playing());
+    CHECK(playingDown && !tr.playing());
+    // pencil: dragging draws the clip's gain line
+    app.execute(Command::ToolPencil);
+    const std::size_t before = [&] { for (const auto& k : s.track(t1)->source->playlist()) if (k.id == id) return k.gainEnv.points().size(); return std::size_t(0); }();
+    io.AddMousePosEvent(x0, yMid); frames(app, 2);
+    io.AddMouseButtonEvent(0, true); frames(app, 2);
+    for (int i = 1; i <= 6; ++i) { io.AddMousePosEvent(x0 + (x1 - x0) * static_cast<float>(i) / 6.f, yMid + 4.f * static_cast<float>(i)); frames(app, 2); }
+    io.AddMouseButtonEvent(0, false); frames(app, 2);
+    std::size_t after = 0;
+    for (const auto& k : s.track(t1)->source->playlist()) if (k.id == id) after = k.gainEnv.points().size();
+    std::printf("pencil: gain line points %zu -> %zu\n", before, after);
+    CHECK(after > before + 2);
+    // grabber: dragging the clip moves it; selector: dragging on the lane selects a range
+    app.execute(Command::ToolGrabber);
+    io.AddMousePosEvent(x0, yMid); frames(app, 2);
+    io.AddMouseButtonEvent(0, true); frames(app, 2);
+    io.AddMousePosEvent(x0 + 50.f, yMid); frames(app, 2);
+    io.AddMouseButtonEvent(0, false); frames(app, 2);
+    std::int64_t moved = 0;
+    for (const auto& k : s.track(t1)->source->playlist()) if (k.id == id) moved = k.start;
+    std::printf("grabber: clip start now %lld\n", static_cast<long long>(moved));
+    CHECK(moved >= 9000 && moved <= 11000);                  // 50 px * 200 frames
+    app.execute(Command::ToolSelector);
+    io.AddMousePosEvent(x0, yMid); frames(app, 2);
+    io.AddMouseButtonEvent(0, true); frames(app, 2);
+    io.AddMousePosEvent(x1, yMid); frames(app, 2);
+    io.AddMouseButtonEvent(0, false); frames(app, 2);
+    std::printf("selector: range %lld..%lld\n", static_cast<long long>(app.selectionStart()), static_cast<long long>(app.selectionEnd()));
+    CHECK(app.selectionEnd() - app.selectionStart() >= 15000 && app.selectionEnd() - app.selectionStart() <= 25000);
+    io.AddMousePosEvent(0, 0); frames(app, 1);
   }
   {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step
     App app;

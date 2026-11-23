@@ -232,6 +232,19 @@ void App::pollHardwareMidi() {
   };
   while (hwMidi_->queue().pop(m)) {
     hwActivityAt_ = ImGui::GetTime();   // lights the MIDI In indicator in the transport
+    if (m.type == midi::MidiMessage::Transport) {   // MIDI Machine Control / realtime start-stop: only while Online
+      if (!online_) continue;
+      auto& tr = engine_->transport();
+      switch (m.a) {
+        case midi::MidiMessage::kPlay: if (!tr.playing()) engine_->startWithCountOff(false); break;
+        case midi::MidiMessage::kStop: case midi::MidiMessage::kPause: if (tr.playing() || engine_->countingOff()) { engine_->cancelCountOff(); tr.stop(); } break;
+        case midi::MidiMessage::kRecord: if (!tr.recording()) execute(Command::Record); break;
+        case midi::MidiMessage::kRecordExit: if (tr.recording()) tr.punchOut(); break;
+        case midi::MidiMessage::kLocate: tr.locate(static_cast<std::int64_t>(m.arg / 1000.0 * session_->sampleRate())); break;
+        default: break;
+      }
+      continue;
+    }
     if (m.type == midi::MidiMessage::NoteOn) {
       if (selPart_ < 0) continue;
       MidiPart& part = midiParts_[static_cast<std::size_t>(selPart_)];

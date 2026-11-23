@@ -16,18 +16,21 @@
 namespace wezt::midi {
 
 struct MidiMessage {
-  enum Type : std::uint8_t { NoteOff, NoteOn, PolyPressure, Control, Program, ChannelPressure, PitchBend };
+  enum Type : std::uint8_t { NoteOff, NoteOn, PolyPressure, Control, Program, ChannelPressure, PitchBend, Transport };   // Transport: MIDI Machine Control (sysex) and the realtime Start/Continue/Stop bytes
   Type type = NoteOn;
   std::uint8_t channel = 0;  // 0..15
   std::uint8_t a = 0;        // note / controller / program / pressure
   std::uint8_t b = 0;        // velocity / value (for PitchBend: low 7 bits in a, high in b)
+  // For Transport: `a` is one of these, and for kLocate `arg` is the target in milliseconds.
+  enum : std::uint8_t { kStop = 1, kPlay = 2, kRecord = 3, kRecordExit = 4, kPause = 5, kLocate = 6 };
+  std::uint32_t arg = 0;
   int pitchBendValue() const { return (static_cast<int>(b) << 7 | a) - 8192; }  // -8192..8191
 };
 
 class MidiParser {
  public:
   // Feeds one byte; returns true and fills `out` when a complete channel message is ready.
-  // A NoteOn with velocity 0 is reported as NoteOff. System messages are consumed and ignored.
+  // A NoteOn with velocity 0 is reported as NoteOff. System messages are ignored, except MIDI Machine Control (F0 7F dev 06 ...) and realtime Start (FA), Continue (FB) and Stop (FC), which come out as Transport messages.
   bool feed(std::uint8_t byte, MidiMessage& out);
   void reset();
  private:
@@ -35,6 +38,8 @@ class MidiParser {
   std::uint8_t data_[2] = {0, 0};
   int have_ = 0, need_ = 0;
   bool inSysex_ = false;
+  std::uint8_t sysex_[16] = {0};
+  int sysexLen_ = 0;
 };
 
 class MidiQueue {

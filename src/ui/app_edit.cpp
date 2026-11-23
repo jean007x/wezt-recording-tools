@@ -1,5 +1,6 @@
 // Toolbar, overview, tracks/groups list and the Edit window (rulers, track headers, clips).
 #include <algorithm>
+#include <optional>
 #include <cmath>
 #include <cstdio>
 
@@ -513,6 +514,7 @@ void App::drawEdit() {
   float y = origin.y + rulerH;
   const ImVec2 mouse = ImGui::GetIO().MousePos;
   const float lanesTop = y;
+  geo_ = TimelineGeometry{timelineX, lanesTop, laneH, static_cast<float>(fpp), scrollFrames_, firstTrack_};
   const float areaBottom = origin.y + avail.y;
   int rowIndex = 0;
   const int firstIdx = firstTrack_;
@@ -830,9 +832,10 @@ void App::drawEdit() {
   }
   const int visRows = static_cast<int>(vis.size());
   auto rowAt = [&](float yy) -> int { if (yy < lanesTop) return -1; const int r = static_cast<int>((yy - lanesTop) / laneH) + firstIdx; return r < 0 || r >= visRows ? -1 : r; };
-  auto clipAt = [&](session::Track* t, std::int64_t f) -> const Clip* {
-    const Clip* hit = nullptr;
-    for (const Clip& c : t->source->playlist()) if (f >= c.start && f < c.start + c.length) hit = &c;
+  // (a copy: the playlist is a temporary, a pointer into it would dangle)
+  auto clipAt = [&](session::Track* t, std::int64_t f) -> std::optional<Clip> {
+    std::optional<Clip> hit;
+    for (const Clip& c : t->source->playlist()) if (f >= c.start && f < c.start + c.length) hit = c;
     return hit;
   };
   const float mkTop = origin.y + rowRuler * 2.f;
@@ -849,7 +852,7 @@ void App::drawEdit() {
     } else if (row >= 0) {
       selTrack_ = vis[static_cast<std::size_t>(row)];
       session::Track* t = session_->track(selTrack_);
-      const Clip* c = clipAt(t, f);
+      const std::optional<Clip> c = clipAt(t, f);
       const bool lowerHalf = (mouse.y - lanesTop) - static_cast<float>(row - firstIdx) * laneH > laneH * 0.5f;
       Tool tool = tool_;
       if (tool == Tool::Smart) tool = lowerHalf ? Tool::Grabber : Tool::Selector;
