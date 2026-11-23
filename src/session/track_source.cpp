@@ -115,6 +115,36 @@ bool TrackSource::pushSlot(int type, std::int64_t pos, std::int64_t skip, const 
 }
 
 void TrackSource::renderClips(AudioBuffer& out, std::int64_t chunkStart) {
+  if (ctx_ && ctx_->halfSpeed) {   // half speed: every timeline frame lasts two output frames; in between, the neighbours are blended
+    const std::int64_t n = static_cast<std::int64_t>(out.frames);
+    for (const Clip& c : clips_) {
+      if (!c.audio || c.length <= 0 || c.muted) continue;
+      const float gain = dbToLin(c.gainDb);
+      const std::int64_t avail = static_cast<std::int64_t>(c.audio->frames);
+      for (std::int64_t o = 0; o < n; ++o) {
+        const std::int64_t twice = o + static_cast<std::int64_t>(ctx_->halfPhase);   // half-frames from the chunk start
+        const std::int64_t t = chunkStart + twice / 2;
+        if (t < c.start || t >= c.start + c.length) continue;
+        const bool between = (twice & 1) != 0;
+        const std::int64_t pos = t - c.start, idx = c.offset + pos;
+        if (idx < 0 || idx >= avail) continue;
+        float w = 1.f;
+        if (c.fadeIn > 0 && pos < c.fadeIn) w = static_cast<float>(pos) / static_cast<float>(c.fadeIn);
+        if (c.fadeOut > 0 && c.length - pos <= c.fadeOut) w = std::min(w, static_cast<float>(c.length - pos) / static_cast<float>(c.fadeOut));
+        const float envGain = c.gainEnv.empty() ? 1.f : dbToLin(c.gainEnv.valueAt(pos, 0.f));
+        for (std::size_t ch = 0; ch < out.channels; ++ch) {
+          const std::size_t sc = c.audio->channels == 1 ? 0 : ch;
+          if (sc >= c.audio->channels) continue;
+          const float* d = c.audio->channel(sc);
+          const float a = d[idx], b = (between && idx + 1 < avail) ? d[idx + 1] : a;
+          const float s = (between ? 0.5f * (a + b) : a) * gain * envGain;
+          float& y = out.channel(ch)[static_cast<std::size_t>(o)];
+          y = y * (1.f - w) + s * w;
+        }
+      }
+    }
+    return;
+  }
   const std::int64_t n = static_cast<std::int64_t>(out.frames), chunkEnd = chunkStart + n;
   for (const Clip& c : clips_) {
     if (!c.audio || c.length <= 0 || c.muted) continue;
@@ -311,7 +341,7 @@ void TrackSource::autoApplyFor(plugins::IPluginInstance* inst, std::int64_t at) 
 void TrackSource::process(const AudioBuffer&, AudioBuffer& out) {
   out.clearValid();
   if (!ctx_) return;
-  dispatchMidi(out.frames);
+  dispatchMidi(static_cast<std::size_t>(ctx_->sourceFrames()));
   applyParamAutomation(out.frames);
   const std::int64_t start = ctx_->chunkStart;
   const bool armed = armed_.load(std::memory_order_relaxed);
@@ -321,6 +351,10 @@ void TrackSource::process(const AudioBuffer&, AudioBuffer& out) {
   // ---- recording ----
   if (rec && maxFrames_ && out.frames <= maxFrames_) {
     const float* ptrs[2] = {ctx_->inputChannel(inputs_[0]), ctx_->inputChannel(inputs_.size() > 1 ? inputs_[1] : inputs_[0])};
+    if (recording_ && recNext_ != start) {   // the playhead jumped (loop wrap, locate): this take ends and a new one begins
+      pushSlot(kStop, 0, 0, nullptr, 0, false);
+      recording_ = false;
+    }
     if (!recording_) {
       std::int64_t s = start - ctx_->recordLatencyFrames;  // the take belongs where the sound happened
       std::int64_t skip = 0;
@@ -329,6 +363,7 @@ void TrackSource::process(const AudioBuffer&, AudioBuffer& out) {
     }
     if (recording_ && !pushSlot(kData, 0, 0, ptrs, static_cast<std::uint32_t>(out.frames), true))
       dropped_.fetch_add(1, std::memory_order_relaxed);
+    recNext_ = start + static_cast<std::int64_t>(out.frames);
   } else if (recording_) {
     pushSlot(kStop, 0, 0, nullptr, 0, false);
     recording_ = false;

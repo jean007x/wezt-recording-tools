@@ -710,7 +710,95 @@ static void testStripLaneEdit() {
   CHECK(s.setStripLane(t, 2, {{10, 0.7f}}) && s.track(t)->strip->muteLane().points()[0].value == 1.f);   // mute lane is on/off
 }
 
+static void testHalfSpeedPlayback() {
+  Session s(48000, 2, 128);
+  const auto t = s.addTrack("Ramp", true, {0});
+  s.track(t)->strip->setPan(-1.f);
+  auto buf = std::make_shared<AudioBuffer>(1, 8000);
+  for (std::size_t i = 0; i < 8000; ++i) buf->channel(0)[i] = static_cast<float>(i) / 10000.f;
+  Clip c; c.audio = buf; c.start = 0; c.length = 8000; c.name = "ramp";
+  s.addClip(t, c);
+  Rig r(s);
+  r.e->playHalfSpeed();
+  const Out o = r.run(std::vector<unsigned>(8, 128));        // 1024 output frames = 512 timeline frames
+  NEAR(o.l[400], 200.0 / 10000.0, 2e-4);                      // output frame 400 shows timeline frame 200
+  NEAR(o.l[401], 200.5 / 10000.0, 2e-4);                      // and the one in between is blended
+  NEAR(o.l[1000], 500.0 / 10000.0, 2e-4);
+}
+
+static void testLoopRecording() {
+  const fs::path dir = tmpDir("looprec");
+  auto input = [](std::int64_t k, unsigned c) { return 0.5f * std::sin(0.01f * static_cast<float>(k) + static_cast<float>(c)); };
+  Session s(48000, 2, 128);
+  s.setRecordFolder((dir / "Audio Files").string());
+  const auto t = s.addTrack("Vox", true, {1});
+  s.track(t)->source->arm(true);
+  Rig r(s, 2, 32, 16);
+  r.e->startLoopRecord(1000, 1512);                   // a loop of four blocks
+  r.run(std::vector<unsigned>(9, 128), input);        // two full passes and a bit of a third
+  r.e->transport().stop();
+  r.run({128}, input);
+  std::string err;
+  CHECK(s.commitTakes(&err) == 3);                    // every pass is its own take
+  const auto list = s.track(t)->source->playlist();
+  CHECK(list.size() == 3);
+  if (list.size() == 3) {
+    CHECK(list[0].length == 512 && list[1].length == 512 && list[2].length == 128);
+    CHECK(list[0].start == list[1].start && list[1].start == list[2].start);
+  }
+  CHECK(s.track(t)->source->droppedBlocks() == 0);
+  fs::remove_all(dir);
+}
+
+static void testConsolidateAndRenderTrack() {
+  Session s(48000, 2, 128);
+  const std::string dir = (fs::temp_directory_path() / "wezt_consolidate").string();
+  fs::remove_all(dir);
+  s.setRecordFolder(dir);
+  const auto t = s.addTrack("Gtr", true, {0});
+  Clip c = clipOf(mono(10000, 0.5f), 1000);
+  c.gainDb = -6.0206f;                                      // -6 dB: 0.5 -> 0.25
+  c.fadeIn = 100;
+  s.addClip(t, c);
+  s.addClip(t, clipOf(mono(2000, 0.5f), 20000));            // a second clip outside the range
+  std::string err;
+  const int id = s.consolidate(t, 500, 12000, &err);
+  CHECK(id >= 0);
+  const auto list = s.track(t)->source->playlist();
+  CHECK(list.size() == 2);
+  const Clip* cons = nullptr;
+  for (const auto& k : list) if (k.id == id) cons = &k;
+  CHECK(cons && cons->start == 500 && cons->length == 11500);
+  if (cons && cons->audio) {
+    const float* d = cons->audio->channel(0);
+    NEAR(d[300], 0.0, 1e-6);                                // before the clip: silence
+    NEAR(d[550], 0.25 * 0.5, 1e-3);       // halfway into the 100-frame fade (clip starts at 1000)
+    NEAR(d[5000], 0.25, 1e-4);                              // gain applied
+  }
+  CHECK(s.consolidate(t, 15000, 16000, &err) == -1);         // nothing in range
+
+  // rendering the track alone onto a new track
+  const auto other = s.addTrack("Other", true, {0});
+  s.addClip(other, clipOf(mono(12000, 0.9f), 0));
+  s.track(t)->strip->setPan(-1.f);
+  const auto nt = s.renderTrackToNewTrack(t, 0, 12000, true, &err);
+  CHECK(nt >= 0);
+  if (nt >= 0) {
+    const auto nl = s.track(nt)->source->playlist();
+    CHECK(nl.size() == 1);
+    float peak = 0;
+    if (nl.size() == 1 && nl[0].audio) for (std::size_t i = 0; i < nl[0].audio->frames && i < 12000; ++i) peak = std::max(peak, std::fabs(nl[0].audio->channel(0)[i]));
+    CHECK(peak > 0.2f && peak < 0.3f);                      // only the 0.25 track, not "Other" (0.9)
+    CHECK(s.track(t)->strip->muted());
+    CHECK(!s.anySolo());                                    // the solos were put back
+  }
+  fs::remove_all(dir);
+}
+
 int main() {
+  testHalfSpeedPlayback();
+  testLoopRecording();
+  testConsolidateAndRenderTrack();
   testStripLaneEdit();
   testPluginFaultReport();
   testPlaybackAndPan();

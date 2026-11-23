@@ -1,4 +1,5 @@
 #include "session/session.h"
+#include "session/clip_edit.h"
 #include "session/automated_effect.h"
 #include "edit/playlists.h"
 
@@ -635,6 +636,87 @@ bool Session::removeClip(TrackId id, int clipId) {
   list.erase(it, list.end());
   t->source->setPlaylist(std::move(list));
   return true;
+}
+
+int Session::consolidate(TrackId id, std::int64_t a, std::int64_t b, std::string* error) {
+  Track* t = track(id);
+  if (!t) { if (error) *error = "no such track"; return -1; }
+  if (b <= a) { if (error) *error = "empty range"; return -1; }
+  const auto list = t->source->playlist();
+  unsigned chans = 1;
+  bool any = false;
+  for (const Clip& c : list) {
+    if (c.start + c.length <= a || c.start >= b) continue;
+    any = true;
+    if (c.audio) chans = std::max<unsigned>(chans, std::min<unsigned>(2, static_cast<unsigned>(c.audio->channels)));
+  }
+  if (!any) { if (error) *error = "no clips in the range"; return -1; }
+  const std::size_t frames = static_cast<std::size_t>(b - a);
+  AudioBuffer mix(chans, frames);
+  for (const Clip& c : list) {
+    if (c.muted || !c.audio) continue;
+    const std::int64_t s0 = std::max(c.start, a), e0 = std::min(c.start + c.length, b);
+    if (e0 <= s0) continue;
+    const float g0 = std::pow(10.f, c.gainDb / 20.f);
+    for (unsigned ch = 0; ch < chans; ++ch) {
+      const float* src = c.audio->channel(std::min<std::size_t>(ch, c.audio->channels - 1));
+      float* dst = mix.channel(ch);
+      for (std::int64_t f = s0; f < e0; ++f) {
+        const std::int64_t rel = f - c.start, sf = c.offset + rel;
+        if (sf < 0 || sf >= static_cast<std::int64_t>(c.audio->frames)) continue;
+        float g = g0;
+        if (!c.gainEnv.empty()) g *= std::pow(10.f, c.gainEnv.valueAt(rel, 0.f) / 20.f);
+        if (c.fadeIn > 0 && rel < c.fadeIn) g *= static_cast<float>(rel) / static_cast<float>(c.fadeIn);
+        if (c.fadeOut > 0 && rel >= c.length - c.fadeOut) g *= static_cast<float>(c.length - rel) / static_cast<float>(c.fadeOut);
+        dst[f - a] += src[sf] * g;
+      }
+    }
+  }
+  std::error_code ec;
+  fs::create_directories(recordFolderFor(), ec);
+  std::string stem = safeName(t->name) + "_cons";
+  fs::path out = fs::path(recordFolderFor()) / (stem + ".wav");
+  for (int n = 2; fs::exists(out); ++n) out = fs::path(recordFolderFor()) / (stem + "_" + std::to_string(n) + ".wav");
+  if (!io::writeWavFloat(out.string(), mix, static_cast<unsigned>(rate_))) { if (error) *error = "could not write " + out.string(); return -1; }
+  Clip n;
+  n.file = out.string();
+  std::int64_t got = 0;
+  if (!loadWav(n.file, rate_, n.audio, &got, error)) return -1;
+  n.start = a; n.length = got;
+  int next = t->nextClipId;
+  auto rest = removeRange(next, list, a, b);
+  t->nextClipId = next;
+  n.id = t->nextClipId++;
+  rest.push_back(std::move(n));
+  t->source->setPlaylist(std::move(rest));
+  return t->nextClipId - 1;
+}
+
+TrackId Session::renderTrackToNewTrack(TrackId id, std::int64_t a, std::int64_t b, bool muteSource, std::string* error) {
+  Track* t = track(id);
+  if (!t) { if (error) *error = "no such track"; return -1; }
+  if (b <= a) { if (error) *error = "empty range"; return -1; }
+  std::vector<std::pair<TrackId, bool>> solos;
+  for (TrackId other : trackIds()) if (Track* ot = track(other)) solos.emplace_back(other, ot->solo);
+  for (auto& s : solos) setSolo(s.first, s.first == id);
+  std::error_code ec;
+  fs::create_directories(recordFolderFor(), ec);
+  const std::string stem = safeName(t->name) + (muteSource ? "_commit" : "_bounce");
+  fs::path out = fs::path(recordFolderFor()) / (stem + ".wav");
+  for (int n = 2; fs::exists(out); ++n) out = fs::path(recordFolderFor()) / (stem + "_" + std::to_string(n) + ".wav");
+  const BounceResult r = bounce(out.string(), a, b, static_cast<std::int64_t>(rate_));
+  for (auto& s : solos) setSolo(s.first, s.second);
+  if (!r.ok) { if (error) *error = r.error; return -1; }
+  const std::string name = t->name + (muteSource ? " (committed)" : " (bounced)");
+  const TrackId nt = addTrack(name, false, {0, 1});
+  Clip c;
+  c.file = out.string();
+  std::int64_t frames = 0;
+  if (!loadWav(c.file, rate_, c.audio, &frames, error)) return -1;
+  c.start = a; c.length = frames;
+  addClip(nt, std::move(c));
+  if (muteSource) if (Track* src = track(id)) src->strip->setMute(true);
+  return nt;
 }
 
 int Session::commitTakes(std::string* error) {

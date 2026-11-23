@@ -170,6 +170,7 @@ class TrackSource : public Processor {
   std::size_t slotCount_ = 0, maxFrames_ = 0, recCh_ = 1;
   std::atomic<std::size_t> head_{0}, tail_{0};
   bool recording_ = false;  // audio thread
+  std::int64_t recNext_ = -1;  // where the next recorded chunk should start if the song carries on; a jump (loop wrap, locate) ends the take
   double sampleRate_ = 48000;
   std::atomic<std::uint64_t> dropped_{0};
 

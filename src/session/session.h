@@ -192,6 +192,16 @@ class Session {
   int commitTakes(std::string* error = nullptr);
   void setRecordFolder(const std::string& dir);  // default: <session folder>/Audio Files
 
+  // ---- rendering a track ----
+  std::string recordFolder() const { return recordFolderFor(); }
+  // Consolidate: mixes the clips of a track that lie in [a, b) (gain, fades, gain line; muted clips are silent; no inserts or fader) into
+  // one new WAV file in the audio folder and puts one clip in their place. Returns the clip id, or -1 with `error`.
+  int consolidate(TrackId t, std::int64_t a, std::int64_t b, std::string* error = nullptr);
+  // Renders one track alone, as it sounds (inserts, fader, pan, sends to the master bus and the master itself), over [a, b) plus a
+  // tail, and puts the result on a new track. With hideSource the original track is muted. The audio device must not be running.
+  // Returns the new track's id, or -1 with `error`.
+  TrackId renderTrackToNewTrack(TrackId t, std::int64_t a, std::int64_t b, bool muteSource, std::string* error = nullptr);
+
   // ---- offline render ----
   // Renders [start, end) plus `tailFrames` (reverb/delay tails) of the whole mix to a WAV file,
   // faster than real time. The graph is re-prepared; do not call while the device runs.

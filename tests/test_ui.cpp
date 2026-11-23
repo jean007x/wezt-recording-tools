@@ -122,13 +122,13 @@ int main() {
     CHECK(!tr.recording() && app.status().find("Arm") != std::string::npos);
     press(app, ImGuiKey_Z, true);                            // Ctrl+Z with nothing recorded yet: says so, changes nothing
     CHECK(app.status().find("Nothing to undo") != std::string::npos);
-    app.execute(Command::CommitTrack);                       // still not built: said so
+    app.execute(Command::OnlinePlayback);                    // still not built (needs an external transport): said so
     CHECK(app.status().find("not available") != std::string::npos);
     // typing in a text field must not trigger shortcuts
     io.AddInputCharacter('x');
     app.setView(MainView::Edit);
     CHECK(app.view() == MainView::Edit);
-    CHECK(!app.isImplemented(Command::CommitTrack) && app.isImplemented(Command::PlayStop) && app.isImplemented(Command::Undo));
+    CHECK(!app.isImplemented(Command::OnlinePlayback) && app.isImplemented(Command::PlayStop) && app.isImplemented(Command::Undo));
 
     // ---- clip editing
     session::Session& ss = app.session();
@@ -547,6 +547,29 @@ int main() {
     app.execute(Command::ShowBigCounter);
     app.execute(Command::ToolScrubber); app.execute(Command::ToolPencil);
     CHECK(app.tool() == Tool::Pencil);
+  }
+  {  // consolidate and bounce/commit through the commands
+    App app;
+    frames(app);
+    auto& s = app.session();
+    const auto dir = std::filesystem::temp_directory_path() / "wezt_ui_cons";
+    std::filesystem::remove_all(dir);
+    s.setRecordFolder((dir / "Audio Files").string());
+    const auto t1 = app.selectedTrack();
+    auto buf = std::make_shared<AudioBuffer>(1, 8000);
+    for (std::size_t i = 0; i < 8000; ++i) buf->channel(0)[i] = 0.3f;
+    session::Clip c; c.audio = buf; c.start = 0; c.length = 4000; c.name = "a";
+    session::Clip d = c; d.start = 4000; d.offset = 4000;
+    s.addClip(t1, c); const int idb = s.addClip(t1, d);
+    app.selectClip(t1, idb);
+    app.setRange(1000, 7000);
+    app.execute(Command::ConsolidateClip);
+    CHECK(s.track(t1)->source->playlist().size() == 3);       // left remainder, the new clip, right remainder
+    app.setRange(0, 0);
+    const std::size_t tracks = s.trackCount();
+    app.execute(Command::BounceTrack);
+    CHECK(s.trackCount() == tracks + 1);
+    std::filesystem::remove_all(dir);
   }
   {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step
     App app;

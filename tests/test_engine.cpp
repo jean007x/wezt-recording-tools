@@ -349,6 +349,29 @@ static void testQuickPunch() {
   CHECK(r.e->transport().playing() && !r.e->transport().recording() && r.e->transport().position() > at);   // the song never stopped
 }
 
+static void testHalfSpeed() {
+  Rig r(128); CHECK(r.start(0, 2));
+  r.e->transport().locate(1000);
+  runSizes(r, 2, std::vector<unsigned>(1, 128));
+  const auto p0 = r.e->transport().position();
+  r.e->playHalfSpeed();
+  runSizes(r, 2, std::vector<unsigned>(100, 128));             // 12800 output frames
+  const auto moved = r.e->transport().position() - p0;
+  CHECK(moved >= 6400 - 128 && moved <= 6400 + 128);           // the song advanced half as far
+  r.e->transport().stop();
+  runSizes(r, 2, std::vector<unsigned>(2, 128));
+  r.e->transport().play();
+  const auto p1 = r.e->transport().position();
+  runSizes(r, 2, std::vector<unsigned>(10, 128));
+  CHECK(r.e->transport().position() - p1 >= 1280 - 128);        // back to normal speed after the stop
+  // odd chunk sizes keep the count exact
+  Rig q(128); CHECK(q.start(0, 2));
+  q.e->playHalfSpeed();
+  runSizes(q, 2, std::vector<unsigned>(40, 101));
+  const auto got = q.e->transport().position();
+  CHECK(got >= 2020 - 101 && got <= 2020 + 101);
+}
+
 static void testPunchRange() {
   Rig r(128); CHECK(r.start(0, 2));
   r.e->setPreRollFrames(4800);
@@ -471,6 +494,7 @@ int main() {
   testMetronomeAndCountOff();
   testPreRoll();
   testPunchRange();
+  testHalfSpeed();
   testQuickPunch();
   testFaultContainment();
   testNonFiniteOutput();

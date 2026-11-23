@@ -1,6 +1,7 @@
 #include "instruments/builtin.h"
 #include "ui/app.h"
 #include "ui/insert_factory.h"
+#include "session/clip_edit.h"
 
 #include <algorithm>
 #include <cmath>
@@ -199,6 +200,7 @@ bool App::isImplemented(Command c) const {
     case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste:
     case Command::MuteClips: case Command::TrimClipToSelection: case Command::TrimStartToInsertion: case Command::TrimEndToInsertion:
     case Command::InsertSilence: case Command::RepeatSelection: case Command::HealSeparation: case Command::StopRecord: case Command::Pause: case Command::ZoomToggle:
+    case Command::PlayHalfSpeed: case Command::LoopRecord: case Command::ConsolidateClip: case Command::BounceTrack: case Command::CommitTrack:
     case Command::CloseSession: case Command::OpenRecent: case Command::ShowBigCounter: case Command::ModeSnapToGrid: case Command::RestoreSelection:
     case Command::GroupTracks: case Command::ScrollToTrack: case Command::SeparateClip: case Command::CreateFades:
     case Command::ToggleMixEdit: case Command::ShowTransport: case Command::ZoomIn: case Command::ZoomOut: case Command::ZoomSession:
@@ -291,7 +293,52 @@ void App::execute(Command c) {
     case Command::CycleEditTools: cycleTool(); break;
     case Command::Clear: case Command::DeleteSelection: deleteSelectedClip(); break;
     case Command::Duplicate: duplicateSelectedClip(); break;
+    case Command::LoopRecord: {
+      bool any = false;
+      for (auto id : session_->trackIds()) any = any || session_->track(id)->source->armed();
+      if (!any) { setStatus("Arm a track (R) before recording"); break; }
+      if (selEnd_ <= selStart_) { setStatus("Select the range to loop, then use Loop Record"); break; }
+      if (tr.playing()) tr.stop();
+      engine_->startLoopRecord(selStart_, selEnd_);
+      setStatus("Loop recording: every pass becomes a take (the newest plays, earlier ones stay muted); press stop when done");
+      break;
+    }
+    case Command::PlayHalfSpeed:
+      if (tr.playing()) tr.stop(); else { engine_->playHalfSpeed(); setStatus("Playing at half speed (an octave down)"); }
+      break;
     case Command::MuteClips: muteSelectedClip(); break;
+    case Command::ConsolidateClip: {
+      session::Track* t = session_->track(selTrack_);
+      if (!t) break;
+      std::int64_t a = selStart_, b = selEnd_;
+      if (b <= a) {   // no range: the selected clip's span
+        bool found = false;
+        for (const auto& k : t->source->playlist()) if (k.id == selClip_) { a = k.start; b = k.start + k.length; found = true; }
+        if (!found) { setStatus("Select a clip or a range to consolidate"); break; }
+      }
+      std::string err;
+      int id = -1;
+      WEZT_PAUSED(id = session_->consolidate(selTrack_, a, b, &err));
+      if (id >= 0) { selClip_ = id; setStatus("Consolidated into one clip"); } else setStatus("Consolidate: " + err);
+      break;
+    }
+    case Command::BounceTrack: case Command::CommitTrack: {
+      if (!session_->track(selTrack_)) break;
+      std::int64_t a = selStart_, b = selEnd_;
+      if (b <= a) {
+        a = 0; b = 0;
+        for (const auto& k : session_->track(selTrack_)->source->playlist()) b = std::max(b, k.start + k.length);
+      }
+      if (b <= a) { setStatus("Nothing on the track to render"); break; }
+      std::string err;
+      TrackId nt = -1;
+      const bool commit = c == Command::CommitTrack;
+      setStatus(commit ? "Committing..." : "Bouncing...");
+      WEZT_PAUSED(nt = session_->renderTrackToNewTrack(selTrack_, a, b, commit, &err));
+      if (nt >= 0) { selTrack_ = nt; setStatus(commit ? "Committed: the track now plays from a new, rendered track (the original is muted)" : "Bounced the track to a new track"); }
+      else setStatus(std::string(commit ? "Commit" : "Bounce") + ": " + err);
+      break;
+    }
     case Command::CloseSession: openFileAction("new"); break;
     case Command::OpenRecent:
       if (prefs_.recent.empty()) { setStatus("No recent sessions yet"); break; }
@@ -422,52 +469,6 @@ void App::duplicateSelectedClip() {
   setStatus("Clip duplicated");
 }
 
-// The part of a clip that lies inside [a, b) on the timeline (a and b already clamped to the clip). Fades stay only on the edges that
-// are still the clip's own edges; the gain line is cut to the same part.
-static Clip slicePiece(const Clip& c, std::int64_t a, std::int64_t b) {
-  Clip n = c;
-  const std::int64_t shift = a - c.start;
-  n.start = a; n.offset = c.offset + shift; n.length = b - a;
-  if (a > c.start) n.fadeIn = 0;
-  if (b < c.start + c.length) n.fadeOut = 0;
-  if (!c.gainEnv.empty() && shift > 0) {
-    session::AutomationLane env;
-    float held = 0.f; bool have = false;
-    for (const auto& p : c.gainEnv.points()) {
-      if (p.frame <= shift) { held = p.value; have = true; }
-      else if (p.frame - shift < n.length) env.add(p.frame - shift, p.value);
-    }
-    if (have) env.add(0, held);
-    n.gainEnv = env;
-  }
-  return n;
-}
-
-// Copies the material in [a, b) of a track: every clip that touches it, trimmed to it, starting relative to a.
-static std::vector<Clip> copyRange(const std::vector<Clip>& list, std::int64_t a, std::int64_t b) {
-  std::vector<Clip> out;
-  for (const auto& c : list) {
-    const std::int64_t s = std::max(c.start, a), e = std::min(c.start + c.length, b);
-    if (e <= s) continue;
-    Clip n = slicePiece(c, s, e);
-    n.start -= a;
-    out.push_back(std::move(n));
-  }
-  return out;
-}
-
-// Takes [a, b) out of a track's playlist, leaving what lies outside as one or two pieces. Locked clips stay as they are.
-static std::vector<Clip> removeRange(session::Track& t, std::vector<Clip> list, std::int64_t a, std::int64_t b) {
-  std::vector<Clip> out;
-  for (auto& c : list) {
-    const std::int64_t cs = c.start, ce = c.start + c.length;
-    if (c.locked || ce <= a || cs >= b) { out.push_back(std::move(c)); continue; }
-    if (cs < a) { Clip l = slicePiece(c, cs, a); out.push_back(std::move(l)); }
-    if (ce > b) { Clip r = slicePiece(c, b, ce); r.id = t.nextClipId++; out.push_back(std::move(r)); }
-  }
-  return out;
-}
-
 void App::copySelectedClip(bool cut) {
   session::Track* t = session_->track(selTrack_);
   if (!t) return;
@@ -478,7 +479,7 @@ void App::copySelectedClip(bool cut) {
     if (got.empty()) { setStatus("Nothing in the selected range"); return; }
     clipboard_ = std::move(got);
     clipboardLen_ = selEnd_ - selStart_;
-    if (cut) { t->source->setPlaylist(removeRange(*t, std::move(list), selStart_, selEnd_)); selClip_ = -1; }
+    if (cut) { t->source->setPlaylist(removeRange(t->nextClipId, std::move(list), selStart_, selEnd_)); selClip_ = -1; }
   } else {
     const Clip* c = nullptr;
     for (const auto& k : list) if (k.id == selClip_) c = &k;
@@ -496,7 +497,7 @@ void App::pasteClip() {
   session::Track* t = session_->track(selTrack_);
   if (!t) return;
   const std::int64_t at = position();
-  auto list = removeRange(*t, t->source->playlist(), at, at + clipboardLen_);   // pasting overwrites what is underneath
+  auto list = removeRange(t->nextClipId, t->source->playlist(), at, at + clipboardLen_);   // pasting overwrites what is underneath
   int last = -1;
   for (const auto& c : clipboard_) {
     Clip n = c;
@@ -601,7 +602,7 @@ void App::repeatSelection() {
   }
   auto got = copyRange(list, a, b);
   if (got.empty()) { setStatus("Nothing in the selection to repeat"); return; }
-  list = removeRange(*t, std::move(list), b, b + (b - a));
+  list = removeRange(t->nextClipId, std::move(list), b, b + (b - a));
   for (auto& c : got) { c.id = t->nextClipId++; c.start += b; list.push_back(std::move(c)); }
   t->source->setPlaylist(std::move(list));
   setStatus("Repeated once");
@@ -799,7 +800,17 @@ void App::commitRecordedTakes() {
   takesPending_ = false;
   std::string err;
   int added = 0;
+  std::map<TrackId, std::size_t> before;
+  for (auto id : session_->trackIds()) before[id] = session_->track(id)->source->playlist().size();
   WEZT_PAUSED(added = session_->commitTakes(&err));
+  for (auto id : session_->trackIds()) {   // several takes at once (loop recording): the newest plays, the earlier ones stay muted
+    session::Track* t = session_->track(id);
+    auto list = t->source->playlist();
+    const std::size_t was = before.count(id) ? before[id] : 0;
+    if (list.size() < was + 2) continue;
+    for (std::size_t i = was; i + 1 < list.size(); ++i) list[i].muted = true;
+    t->source->setPlaylist(std::move(list));
+  }
   if (!err.empty()) setStatus("Recording: " + err);
   else if (added > 0) setStatus(added == 1 ? "Recorded 1 take" : "Recorded " + std::to_string(added) + " takes");
 }

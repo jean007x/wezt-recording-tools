@@ -40,6 +40,12 @@ class Engine : public audio::AudioCallback {
   // Punch recording: roll in (pre-roll), record exactly [startFrame, endFrame), punch out, and keep playing for the post-roll
   // (the same length as the pre-roll) before stopping. Needs a stopped or playing transport; control thread.
   void startPunch(std::int64_t startFrame, std::int64_t endFrame);
+  // Loop recording: loops [startFrame, endFrame) and records through every pass; each pass becomes its own take. Rolls in first
+  // when a pre-roll is set. Control thread.
+  void startLoopRecord(std::int64_t startFrame, std::int64_t endFrame);
+  // Plays the song at half speed (an octave lower), starting from the playhead; it lasts until the next stop. Audio and MIDI follow the
+  // slower clock; automation lines and plug-in tempo stay approximate. Not while recording.
+  void playHalfSpeed();
   bool preRolling() const { return recordAt_.load(std::memory_order_acquire) >= 0; }
   bool countingOff() const { return countOffLeft_.load(std::memory_order_acquire) > 0; }
   // Processors (e.g. the mixer) keep this pointer and read it inside process().
@@ -64,6 +70,8 @@ class Engine : public audio::AudioCallback {
   Metronome metronome_;
   std::atomic<std::int64_t> countOffLeft_{0}, countOffTotal_{0};
   std::atomic<bool> countOffRecord_{false};
+  std::atomic<bool> halfSpeed_{false};
+  unsigned halfPhase_ = 0;   // audio thread
   std::atomic<std::int64_t> preRoll_{0}, recordAt_{-1}, recordEnd_{-1}, stopAt_{-1};
   void beginRoll(bool record);
   RtContext ctx_;

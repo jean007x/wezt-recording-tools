@@ -1,6 +1,7 @@
 #include "engine/engine.h"
 
 #include <algorithm>
+#include <limits>
 #include <cmath>
 
 #include "engine/denormals.h"
@@ -54,6 +55,22 @@ void Engine::beginRoll(bool record) {   // control thread, or the audio thread a
   else transport_.play();
 }
 
+void Engine::playHalfSpeed() {
+  if (transport_.recording()) return;
+  transport_.play();
+  halfSpeed_.store(true, std::memory_order_release);   // after play(): the audio thread drops the flag while stopped
+}
+
+void Engine::startLoopRecord(std::int64_t startFrame, std::int64_t endFrame) {
+  if (endFrame <= startFrame || startFrame < 0) return;
+  recordEnd_.store(-1, std::memory_order_relaxed); stopAt_.store(-1, std::memory_order_relaxed);
+  transport_.setLoop(startFrame, endFrame);
+  const std::int64_t pre = preRoll_.load(std::memory_order_relaxed);
+  transport_.locate(std::max<std::int64_t>(0, startFrame - pre));
+  transport_.play();
+  recordAt_.store(startFrame, std::memory_order_release);
+}
+
 void Engine::startPunch(std::int64_t startFrame, std::int64_t endFrame) {
   if (endFrame <= startFrame || startFrame < 0) return;
   recordEnd_.store(-1, std::memory_order_relaxed); stopAt_.store(-1, std::memory_order_relaxed);
@@ -105,9 +122,13 @@ void Engine::process(const float* const* in, float* const* out, unsigned frames)
         }
       }
     }
+    bool half = halfSpeed_.load(std::memory_order_acquire);
+    if (half && (!playing || transport_.recording())) { halfSpeed_.store(false, std::memory_order_release); half = false; }
+    if (!half) halfPhase_ = 0;
     if (playing) {  // end the chunk exactly at the loop end so the wrap is sample-accurate
       const std::int64_t toLoop = transport_.framesUntilLoopEnd();
-      if (toLoop < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(std::max<std::int64_t>(1, toLoop));
+      const std::int64_t room = half ? (toLoop > (std::numeric_limits<std::int64_t>::max)() / 2 ? toLoop : toLoop * 2) : toLoop;
+      if (room < static_cast<std::int64_t>(chunk)) chunk = static_cast<std::size_t>(std::max<std::int64_t>(1, room));
     }
 
     // Input slices for this chunk.
@@ -115,6 +136,8 @@ void Engine::process(const float* const* in, float* const* out, unsigned frames)
     ctx_.chunkStart = start;
     ctx_.frames = chunk;
     ctx_.playing = playing;
+    ctx_.halfSpeed = half;
+    ctx_.halfPhase = half ? halfPhase_ : 0;
     ctx_.recording = playing && transport_.recording();
     ctx_.input = devIn_ ? inPtrs_.data() : nullptr;
 
@@ -153,7 +176,11 @@ void Engine::process(const float* const* in, float* const* out, unsigned frames)
       for (unsigned c = 0; c < devOut_ && c < 16; ++c) mixOut[nm++] = out[c] + done;
       metronome_.mix(mixOut, nm, chunk, start, ctx_.sampleRate);
     }
-    if (playing) transport_.advance(static_cast<std::int64_t>(chunk));
+    if (playing) {
+      const std::int64_t adv = half ? ctx_.sourceFrames() : static_cast<std::int64_t>(chunk);
+      if (half) halfPhase_ = static_cast<unsigned>((chunk + halfPhase_) % 2);
+      transport_.advance(adv);
+    }
     done += static_cast<unsigned>(chunk);
   }
 }

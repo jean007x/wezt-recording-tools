@@ -26,7 +26,7 @@ table, but the layout, drawing, colours and names are our own (see `CLEAN_ROOM_P
 
 Everything in `src/ui/commands.cpp`. Open View > Keyboard shortcuts for the live table. Commands that are
 not implemented yet appear dimmed and say so in the status bar instead of doing nothing. Not
-implemented (status at the last update): consolidate, commit/bounce track, loop record, half-speed playback, online playback. Built in this round: close
+implemented (status at the last update): online playback (it needs an external transport such as MIDI machine control, which does not exist in Wezt). Built in this round: consolidate (the selected range or clip, rendered to one new WAV with gain, fades and gain line; no inserts), bounce track and commit track (the track alone with inserts, fader and master processing, rendered to a new track; commit also mutes the original), loop record (loops the selection and records every pass as its own take; the newest plays and earlier ones stay muted; a take now also ends whenever the playhead jumps), play at half speed (Shift+Space; audio and MIDI at half speed with blended in-between samples; automation timing is approximate; not while recording), close
 session (= new session), open recent (last 8 saved or opened sessions, also listed in the Open dialog), big counter
 window, scroll to track, snap-to-grid toggle (snaps in any edit mode), restore selection (the one before the latest
 change), group tracks (the armed tracks, or the selected track with its neighbour), Scrubber tool (drag to hear the
