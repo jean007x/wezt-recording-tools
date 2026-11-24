@@ -192,6 +192,12 @@ class Session {
   int commitTakes(std::string* error = nullptr);
   void setRecordFolder(const std::string& dir);  // default: <session folder>/Audio Files
 
+  // ---- clip effects (offline, destructive on a copy) ----
+  // Runs a clip's audio (the part it plays: offset..offset+length) through `fn`, writes the result as a new WAV in the audio folder and
+  // points the clip at it (offset 0, same start and length; fades, gain and gain line stay). `fn` edits the buffer in place and may
+  // return false with a message to refuse. Returns true on success.
+  bool processClip(TrackId t, int clipId, const std::string& tag, const std::function<bool(AudioBuffer&, double sampleRate, std::string*)>& fn, std::string* error = nullptr);
+
   // ---- rendering a track ----
   std::string recordFolder() const { return recordFolderFor(); }
   // Consolidate: mixes the clips of a track that lie in [a, b) (gain, fades, gain line; muted clips are silent; no inserts or fader) into

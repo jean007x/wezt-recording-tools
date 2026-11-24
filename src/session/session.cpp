@@ -638,6 +638,37 @@ bool Session::removeClip(TrackId id, int clipId) {
   return true;
 }
 
+bool Session::processClip(TrackId id, int clipId, const std::string& tag, const std::function<bool(AudioBuffer&, double, std::string*)>& fn, std::string* error) {
+  Track* t = track(id);
+  if (!t) { if (error) *error = "no such track"; return false; }
+  auto list = t->source->playlist();
+  Clip* c = nullptr;
+  for (auto& k : list) if (k.id == clipId) c = &k;
+  if (!c || !c->audio) { if (error) *error = "the clip has no audio"; return false; }
+  if (c->locked) { if (error) *error = "the clip is locked"; return false; }
+  const std::int64_t avail = static_cast<std::int64_t>(c->audio->frames);
+  const std::int64_t from = std::clamp<std::int64_t>(c->offset, 0, avail), to = std::clamp<std::int64_t>(c->offset + c->length, from, avail);
+  if (to <= from) { if (error) *error = "nothing to process"; return false; }
+  AudioBuffer buf(c->audio->channels, static_cast<std::size_t>(to - from));
+  for (std::size_t ch = 0; ch < buf.channels; ++ch) std::copy(c->audio->channel(ch) + from, c->audio->channel(ch) + to, buf.channel(ch));
+  if (!fn(buf, rate_, error)) return false;
+  std::error_code ec;
+  fs::create_directories(recordFolderFor(), ec);
+  const std::string stem = safeName(c->name.empty() ? t->name : c->name) + "_" + tag;
+  fs::path out = fs::path(recordFolderFor()) / (stem + ".wav");
+  for (int n = 2; fs::exists(out); ++n) out = fs::path(recordFolderFor()) / (stem + "_" + std::to_string(n) + ".wav");
+  if (!io::writeWavFloat(out.string(), buf, static_cast<unsigned>(rate_))) { if (error) *error = "could not write " + out.string(); return false; }
+  Clip n = *c;
+  n.file = out.string();
+  std::int64_t got = 0;
+  if (!loadWav(n.file, rate_, n.audio, &got, error)) return false;
+  n.offset = 0;
+  n.length = std::min(n.length, got);
+  *c = std::move(n);
+  t->source->setPlaylist(std::move(list));
+  return true;
+}
+
 int Session::consolidate(TrackId id, std::int64_t a, std::int64_t b, std::string* error) {
   Track* t = track(id);
   if (!t) { if (error) *error = "no such track"; return -1; }

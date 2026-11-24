@@ -473,11 +473,8 @@ void App::drawBottomTabs() {
   if (st::chip("SAMPLER", showSampler_, blue, ImVec2(92, 22))) showSampler_ = !showSampler_;
   ImGui::SameLine(0, 2);
   if (st::chip("IMMERSIVE", showImmersive_, blue, ImVec2(92, 22))) showImmersive_ = !showImmersive_;
-  ImGui::SameLine(0, 12);
-  ImGui::PushStyleColor(ImGuiCol_Text, st::rgba(0.5f, 0.52f, 0.57f));
-  ImGui::AlignTextToFramePadding();
-  ImGui::TextUnformatted("Clip effects are not built yet");
-  ImGui::PopStyleColor();
+  ImGui::SameLine(0, 2);
+  if (st::chip("CLIP FX", showClipFx_, blue, ImVec2(80, 22))) showClipFx_ = !showClipFx_;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -665,6 +662,19 @@ void App::drawEdit() {
       }
       if (c.fadeIn > 0) dl->AddTriangleFilled(ImVec2(x0, c1.y), ImVec2(x0 + static_cast<float>(c.fadeIn) / fpp, c0.y), ImVec2(x0, c0.y), col(0.f, 0.f, 0.f, 0.35f));
       if (c.fadeOut > 0) dl->AddTriangleFilled(ImVec2(x1, c1.y), ImVec2(x1 - static_cast<float>(c.fadeOut) / fpp, c0.y), ImVec2(x1, c0.y), col(0.f, 0.f, 0.f, 0.35f));
+      if (!c.gainEnv.points().empty()) {   // the clip gain line: +12 dB at the top of the lane, -36 dB at the bottom
+        const auto& gp = c.gainEnv.points();
+        auto gy = [&](float db) { return a.y + (12.f - std::clamp(db, -36.f, 12.f)) / 48.f * (b.y - a.y); };
+        const ImU32 gcol = col(1.f, 0.85f, 0.25f, 0.95f);
+        ImVec2 prev(x0, gy(static_cast<float>(gp.front().value)));
+        for (const auto& q : gp) {
+          const ImVec2 cur(frameToX(c.start + q.frame), gy(static_cast<float>(q.value)));
+          dl->AddLine(prev, cur, gcol, 1.5f);
+          dl->AddCircleFilled(cur, 2.5f, gcol);
+          prev = cur;
+        }
+        dl->AddLine(prev, ImVec2(x1, prev.y), gcol, 1.5f);
+      }
       if (x1 - x0 > 40.f) {
         const std::string nm = clipName(c, t->name);
         dl->PushClipRect(c0, ImVec2(c1.x, c0.y + 15.f), true);

@@ -171,6 +171,18 @@ int main(int argc, char** argv) {
     app.selectPluginParam(t, 0, static_cast<int>(pid));
     app.showPluginParams(true);
   }
+  if (view == "bigcounter") { app.setView(wezt::ui::MainView::Edit); app.showBigCounter(true); }
+  if (view == "pencil") {   // a clip whose gain line was drawn with the Pencil tool
+    app.setView(wezt::ui::MainView::Edit);
+    auto& ss = app.session();
+    const auto t = ss.trackIds().front();
+    auto list = ss.track(t)->source->playlist();
+    if (!list.empty()) {
+      for (int i = 0; i < 40; ++i) list[0].gainEnv.add(static_cast<std::int64_t>(i) * 4000, 6.f - 30.f * std::fabs(std::sin(i * 0.35f)) / 1.f);
+      ss.track(t)->source->setPlaylist(std::move(list));
+    }
+    app.execute(wezt::ui::Command::ToolPencil);
+  }
   if (view == "settings") { app.setView(wezt::ui::MainView::Edit); app.showSettings(true); }
   if (view == "immersive") { app.setView(wezt::ui::MainView::Edit); app.showImmersive(true); }
   app.setRange(static_cast<std::int64_t>(48000 * 1.0), static_cast<std::int64_t>(48000 * 2.5));

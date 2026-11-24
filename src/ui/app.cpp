@@ -892,6 +892,7 @@ void App::frame() {
   if (showImmersive_) drawImmersiveWindow();
   if (showMemory_) drawMemoryWindow();
   if (showBigCounter_) drawBigCounter();
+  if (showClipFx_) drawClipFxWindow();
   if (showClips_) drawClipsWindow();
   if (showVoiceBank_) drawVoiceBankWindow();
   if (showPlugParams_) drawPluginParamsWindow();

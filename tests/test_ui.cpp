@@ -553,6 +553,20 @@ int main() {
     app.execute(Command::ToolScrubber); app.execute(Command::ToolPencil);
     CHECK(app.tool() == Tool::Pencil);
   }
+  {  // the Clip Effects window opens and draws with and without a selected clip
+    App app;
+    frames(app);
+    app.showClipFx(true);
+    frames(app, 3);
+    auto fxbuf = std::make_shared<AudioBuffer>(1, 4000);
+    for (std::size_t i = 0; i < 4000; ++i) fxbuf->channel(0)[i] = 0.2f;
+    session::Clip c; c.audio = fxbuf; c.length = 4000;
+    c.gainEnv.add(1000, -6.0); c.gainEnv.add(3000, 0.0);      // the gain line is drawn over the clip
+    const int id = app.session().addClip(app.selectedTrack(), c);
+    app.selectClip(app.selectedTrack(), id);
+    frames(app, 3);
+    CHECK(app.session().track(app.selectedTrack())->source->playlist().size() == 1);
+  }
   {  // consolidate and bounce/commit through the commands
     App app;
     frames(app);
@@ -625,6 +639,18 @@ int main() {
     for (const auto& k : s.track(t1)->source->playlist()) if (k.id == id) moved = k.start;
     std::printf("grabber: clip start now %lld\n", static_cast<long long>(moved));
     CHECK(moved >= 9000 && moved <= 11000);                  // 50 px * 200 frames
+    {   // trimmer: dragging the left edge of the clip in
+      app.execute(Command::ToolTrimmer);
+      session::Clip cur; for (const auto& k : s.track(t1)->source->playlist()) if (k.id == id) cur = k;
+      const float ex = g.x0 + static_cast<float>((static_cast<double>(cur.start) - g.scroll) / g.framesPerPixel) + 2.f;
+      io.AddMousePosEvent(ex, yMid); frames(app, 2);
+      io.AddMouseButtonEvent(0, true); frames(app, 2);
+      io.AddMousePosEvent(ex + 40.f, yMid); frames(app, 2);
+      io.AddMouseButtonEvent(0, false); frames(app, 2);
+      session::Clip now; for (const auto& k : s.track(t1)->source->playlist()) if (k.id == id) now = k;
+      std::printf("trimmer: start %lld -> %lld, length %lld -> %lld\n", static_cast<long long>(cur.start), static_cast<long long>(now.start), static_cast<long long>(cur.length), static_cast<long long>(now.length));
+      CHECK(now.start > cur.start + 6000 && now.length < cur.length - 6000);
+    }
     app.execute(Command::ToolSelector);
     io.AddMousePosEvent(x0, yMid); frames(app, 2);
     io.AddMouseButtonEvent(0, true); frames(app, 2);
@@ -632,6 +658,20 @@ int main() {
     io.AddMouseButtonEvent(0, false); frames(app, 2);
     std::printf("selector: range %lld..%lld\n", static_cast<long long>(app.selectionStart()), static_cast<long long>(app.selectionEnd()));
     CHECK(app.selectionEnd() - app.selectionStart() >= 15000 && app.selectionEnd() - app.selectionStart() <= 25000);
+    {
+      io.AddMousePosEvent(g.x0 + 300.f, g.lanesTop - 8.f); frames(app, 2);   // the ruler: a click locates the playhead
+      io.AddMouseButtonEvent(0, true); frames(app, 2);
+      io.AddMouseButtonEvent(0, false); frames(app, 3);
+      app.engine().transport().beginBlock();   // (no audio thread runs here to apply the locate)
+      std::printf("ruler click: playhead at %lld\n", static_cast<long long>(app.engine().transport().position()));
+      CHECK(app.engine().transport().position() > 30000);
+      app.execute(Command::ToolZoomer);                                       // the zoomer: a click zooms in
+      const float fppBefore = app.timelineGeometry().framesPerPixel;
+      io.AddMousePosEvent(x1, yMid); frames(app, 2);
+      io.AddMouseButtonEvent(0, true); frames(app, 2);
+      io.AddMouseButtonEvent(0, false); frames(app, 3);
+      CHECK(app.timelineGeometry().framesPerPixel < fppBefore);
+    }
     io.AddMousePosEvent(0, 0); frames(app, 1);
   }
   {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step

@@ -114,6 +114,8 @@ class App {
   void selectClip(session::TrackId t, int clipId) { selTrack_ = t; selClip_ = clipId; }
   void setRange(std::int64_t a, std::int64_t b) { selStart_ = a; selEnd_ = b; }
   // Where the track lanes were drawn last frame (for tests that drive the timeline with the mouse).
+  void showClipFx(bool on) { showClipFx_ = on; }
+  void showBigCounter(bool on) { showBigCounter_ = on; }
   struct TimelineGeometry { float x0 = 0, lanesTop = 0, laneH = 0, framesPerPixel = 1; double scroll = 0; int firstRow = 0; };
   const TimelineGeometry& timelineGeometry() const { return geo_; }
   std::int64_t selectionStart() const { return selStart_; }
@@ -268,6 +270,9 @@ class App {
   void fadeSelectedClip();
   void muteSelectedClip();
   void drawBigCounter();
+  void drawClipFxWindow();
+  bool showClipFx_ = false;
+  float clipFxGainDb_ = 0.f;
   void groupTracksCommand();
   TimelineGeometry geo_;
   bool online_ = false;   // follow MIDI transport messages from the connected MIDI port

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 #include <imgui.h>
@@ -67,14 +68,15 @@ inline bool iconButton(const char* id, Icon icon, bool lit, ImU32 litColor, ImVe
 
 // Segmented text button used for modes, tools and window switches.
 inline bool chip(const char* label, bool on, ImU32 onColor, ImVec2 size = ImVec2(0, 0), ImU32 onText = 0xFFFFFFFF) {
-  const ImVec2 ts = ImGui::CalcTextSize(label);
+  const char* labelEnd = std::strstr(label, "##");   // text after "##" is only an id
+  const ImVec2 ts = ImGui::CalcTextSize(label, labelEnd);
   if (size.x <= 0) size.x = ts.x + 18.f;
   if (size.y <= 0) size.y = ImGui::GetFrameHeight();
   const ImVec2 p = ImGui::GetCursorScreenPos();
   const bool pressed = ImGui::InvisibleButton(label, size);
   ImDrawList* dl = ImGui::GetWindowDrawList();
   face(dl, p, ImVec2(p.x + size.x, p.y + size.y), on ? onColor : 0xFF3C3E44, ImGui::IsItemActive(), ImGui::IsItemHovered());
-  dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + (size.y - ts.y) * 0.5f), on ? onText : 0xFFC9CBD0, label);
+  dl->AddText(ImVec2(p.x + (size.x - ts.x) * 0.5f, p.y + (size.y - ts.y) * 0.5f), on ? onText : 0xFFC9CBD0, label, labelEnd);
   return pressed;
 }
 

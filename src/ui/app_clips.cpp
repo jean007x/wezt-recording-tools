@@ -1,12 +1,17 @@
 // Clips window: every clip on every track in one list, and the playlists (alternate takes) of the
 // selected track.
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <functional>
 
 #include "imgui.h"
 #include "misc/cpp/imgui_stdlib.h"
 #include "edit/clip_tools.h"
+#include "instruments/builtin.h"
 #include "ui/app.h"
+
+#define WEZT_PAUSED(body) do { const bool _was = deviceRunning_; if (_was) device_->stop(); body; std::string _e; if (_was) device_->start(&_e); } while (0)
 
 namespace wezt::ui {
 
@@ -126,6 +131,74 @@ void App::drawClipsWindow() {
     ImGui::EndTable();
     if (delT >= 0) deleteClip(delT, delC);
   }
+  ImGui::End();
+}
+
+}  // namespace wezt::ui
+
+// ---- clip effects: offline processing of the selected clip into a new file ----
+namespace wezt::ui {
+
+void App::drawClipFxWindow() {
+  ImGui::SetNextWindowSize(ImVec2(360, 330), ImGuiCond_FirstUseEver);
+  if (!ImGui::Begin("Clip Effects", &showClipFx_)) { ImGui::End(); return; }
+  session::Track* tr = session_->track(selTrack_);
+  const bool have = tr && selClip_ >= 0;
+  if (!have) ImGui::TextDisabled("Select a clip on the timeline first.");
+  else ImGui::TextDisabled("Applies to the selected clip, into a new audio file (the original file stays).");
+  ImGui::Separator();
+  auto run = [&](const char* tag, const char* done, const std::function<bool(AudioBuffer&, double, std::string*)>& fn) {
+    std::string err;
+    bool ok = false;
+    WEZT_PAUSED(ok = session_->processClip(selTrack_, selClip_, tag, fn, &err));
+    setStatus(ok ? std::string(done) : "Clip effect: " + err);
+  };
+  ImGui::BeginDisabled(!have);
+  if (ImGui::Button("Normalize to -1 dBFS", ImVec2(-1, 0)))
+    run("norm", "Clip normalized", [](AudioBuffer& b, double, std::string* e) {
+      float pk = 0.f;
+      for (std::size_t c = 0; c < b.channels; ++c) for (std::size_t i = 0; i < b.frames; ++i) pk = std::max(pk, std::fabs(b.channel(c)[i]));
+      if (pk < 1e-6f) { if (e) *e = "the clip is silent"; return false; }
+      const float g = std::pow(10.f, -1.f / 20.f) / pk;
+      for (std::size_t c = 0; c < b.channels; ++c) for (std::size_t i = 0; i < b.frames; ++i) b.channel(c)[i] *= g;
+      return true;
+    });
+  if (ImGui::Button("Reverse", ImVec2(-1, 0)))
+    run("rev", "Clip reversed", [](AudioBuffer& b, double, std::string*) { for (std::size_t c = 0; c < b.channels; ++c) std::reverse(b.channel(c), b.channel(c) + b.frames); return true; });
+  if (ImGui::Button("Invert polarity", ImVec2(-1, 0)))
+    run("inv", "Polarity inverted", [](AudioBuffer& b, double, std::string*) { for (std::size_t c = 0; c < b.channels; ++c) for (std::size_t i = 0; i < b.frames; ++i) b.channel(c)[i] = -b.channel(c)[i]; return true; });
+  ImGui::SetNextItemWidth(160);
+  ImGui::SliderFloat("##fxgain", &clipFxGainDb_, -24.f, 24.f, "%.1f dB");
+  ImGui::SameLine();
+  if (ImGui::Button("Apply gain")) {
+    const float db = clipFxGainDb_;
+    run("gain", "Gain applied", [db](AudioBuffer& b, double, std::string*) { const float g = std::pow(10.f, db / 20.f); for (std::size_t c = 0; c < b.channels; ++c) for (std::size_t i = 0; i < b.frames; ++i) b.channel(c)[i] *= g; return true; });
+  }
+  ImGui::Separator();
+  ImGui::TextDisabled("Wezt effects, at their default settings");
+  for (const auto& e : instruments::builtinPlugins()) {
+    if (e.second) continue;   // instruments make no sense here
+    if (!ImGui::Button((e.first + "##fx").c_str(), ImVec2(-1, 0))) continue;
+    const std::string name = e.first;
+    run("fx", (name + " applied").c_str(), [name](AudioBuffer& b, double rate, std::string* err) {
+      plugins::PluginDescriptor d; d.name = name; d.format = plugins::Format::Builtin; d.bitness = 64;
+      auto fx = instruments::makeBuiltin(d);
+      if (!fx) { if (err) *err = "cannot build " + name; return false; }
+      constexpr std::size_t kBlock = 256;
+      fx->prepare(rate, kBlock);
+      const std::size_t lat = fx->latencySamples();
+      const unsigned chans = static_cast<unsigned>(std::max<std::size_t>(2, b.channels));
+      AudioBuffer in(chans, kBlock), out(chans, kBlock), res(b.channels, b.frames);
+      for (std::size_t pos = 0; pos < b.frames + lat; pos += kBlock) {   // run past the end so the latency can be dropped
+        for (unsigned c = 0; c < chans; ++c) for (std::size_t i = 0; i < kBlock; ++i) { const std::size_t k = pos + i; in.channel(c)[i] = k < b.frames ? b.channel(std::min<std::size_t>(c, b.channels - 1))[k] : 0.f; }
+        fx->process(in, out);
+        for (std::size_t c = 0; c < b.channels; ++c) for (std::size_t i = 0; i < kBlock; ++i) { const std::size_t k = pos + i; if (k >= lat && k - lat < b.frames) res.channel(c)[k - lat] = out.channel(c)[i]; }
+      }
+      for (std::size_t c = 0; c < b.channels; ++c) std::copy(res.channel(c), res.channel(c) + b.frames, b.channel(c));
+      return true;
+    });
+  }
+  ImGui::EndDisabled();
   ImGui::End();
 }
 

@@ -107,7 +107,7 @@ Top to bottom: title strip ("Edit: <session>"); toolbar; overview strip; the wor
   read/off, input and output boxes, vol and pan fields. Clips show a name bar, a clip-gain tag and fades.
 - **Mix:** a full window, or **Float mix** to put it over the Edit window; strips have a colour band, inserts, sends, I/O, automation
   mode, pan knob, fader with LED meters, and the name.
-- **Bottom tabs:** **Piano Roll**, **Score**, **Clips**, **Sampler** and **Immersive** (ours); the strip also says that clip effects are not built.
+- **Bottom tabs:** **Piano Roll**, **Score**, **Clips**, **Sampler** and **Immersive** (ours), plus **Clip FX**: an offline window that processes the selected clip into a new audio file (the original file is kept): Normalize, Reverse, Invert polarity, Gain, and the Wezt EQ, Compressor, Limiter and Stereo Width at default settings. The clip gain line (drawn with the Pencil tool) is shown on the clip.
 
 ## Drawing plug-in automation
 

@@ -750,6 +750,32 @@ static void testLoopRecording() {
   fs::remove_all(dir);
 }
 
+static void testProcessClip() {
+  Session s(48000, 2, 128);
+  const std::string dir = (fs::temp_directory_path() / "wezt_procclip").string();
+  fs::remove_all(dir);
+  s.setRecordFolder(dir);
+  const auto t = s.addTrack("Vox", true, {0});
+  AudioBuffer b(1, 8000);
+  for (std::size_t i = 0; i < 8000; ++i) b.channel(0)[i] = static_cast<float>(i) / 16000.f;   // ramp 0..0.5
+  Clip c = clipOf(std::make_shared<AudioBuffer>(std::move(b)), 100);
+  c.offset = 1000; c.length = 4000; c.gainDb = -3.f; c.name = "Take";
+  const int id = s.addClip(t, c);
+  std::string err;
+  CHECK(s.processClip(t, id, "rev", [](AudioBuffer& x, double, std::string*) { for (std::size_t ch = 0; ch < x.channels; ++ch) std::reverse(x.channel(ch), x.channel(ch) + x.frames); return true; }, &err));
+  auto list = s.track(t)->source->playlist();
+  CHECK(list.size() == 1);
+  if (list.size() == 1 && list[0].audio) {
+    const Clip& k = list[0];
+    CHECK(k.start == 100 && k.offset == 0 && k.length == 4000 && k.gainDb == -3.f);
+    NEAR(k.audio->channel(0)[0], 4999.0 / 16000.0, 1e-4);   // the last frame the clip played comes first now
+    NEAR(k.audio->channel(0)[3999], 1000.0 / 16000.0, 1e-4);
+    CHECK(fs::exists(k.file));
+  }
+  CHECK(!s.processClip(t, id, "x", [](AudioBuffer&, double, std::string* e) { if (e) *e = "refused"; return false; }, &err) && err == "refused");
+  CHECK(!s.processClip(t, 9999, "x", [](AudioBuffer&, double, std::string*) { return true; }, &err));
+}
+
 static void testConsolidateAndRenderTrack() {
   Session s(48000, 2, 128);
   const std::string dir = (fs::temp_directory_path() / "wezt_consolidate").string();
@@ -799,6 +825,7 @@ int main() {
   testHalfSpeedPlayback();
   testLoopRecording();
   testConsolidateAndRenderTrack();
+  testProcessClip();
   testStripLaneEdit();
   testPluginFaultReport();
   testPlaybackAndPan();
