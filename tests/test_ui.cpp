@@ -376,6 +376,24 @@ int main() {
         frames(app, 2);
       }
     }
+    {   // the sampler takes the selected timeline clip as its sample
+      instruments::Sampler* sm = app.samplerOn(app.selectedTrack());
+      const auto sampT = app.session().addTrack("tmp clip", true, {0});   // a throwaway track holds the clip
+      app.selectTrack(sampT);
+      CHECK(!app.loadSelectedClipIntoSampler(sm));            // no clip selected on this track yet
+      const auto dir = std::filesystem::temp_directory_path() / "wezt_ui_sampclip";
+      std::filesystem::remove_all(dir);
+      app.session().setRecordFolder((dir / "Audio Files").string());
+      auto sb = std::make_shared<AudioBuffer>(1, 6000);
+      for (std::size_t i = 0; i < 6000; ++i) sb->channel(0)[i] = 0.25f;
+      session::Clip sc; sc.audio = sb; sc.start = 0; sc.offset = 1000; sc.length = 3000; sc.name = "hit";
+      const int cid = app.session().addClip(sampT, sc);
+      app.selectClip(sampT, cid);
+      CHECK(app.loadSelectedClipIntoSampler(sm));
+      CHECK(sm->zones().size() == 1 && sm->zones()[0].audio && sm->zones()[0].audio->frames == 3000);
+      app.session().removeTrack(sampT);
+      app.selectTrack(app.session().trackIds().back());
+    }
     app.showImmersive(true);
     frames(app, 3);
     app.setView(MainView::Edit);
@@ -552,6 +570,39 @@ int main() {
     app.execute(Command::ShowBigCounter);
     app.execute(Command::ToolScrubber); app.execute(Command::ToolPencil);
     CHECK(app.tool() == Tool::Pencil);
+  }
+  {  // input monitoring cycles Auto -> Input -> Off -> Auto
+    App app;
+    frames(app);
+    const auto t = app.selectedTrack();
+    using M = session::MonitorMode;
+    CHECK(app.session().track(t)->source->monitorMode() == M::Auto);
+    app.cycleMonitor(t); CHECK(app.session().track(t)->source->monitorMode() == M::Input);
+    app.cycleMonitor(t); CHECK(app.session().track(t)->source->monitorMode() == M::Off);
+    app.cycleMonitor(t); CHECK(app.session().track(t)->source->monitorMode() == M::Auto);
+  }
+  {  // MIDI keyboard notes are recorded into the selected part while the transport records
+    App app;
+    frames(app);
+    auto& tr = app.engine().transport();
+    CHECK(!app.recordMidiNote(true, 60, 100));              // not recording
+    const int part = app.newMidiPart("Take");
+    app.selectMidiPart(part);
+    tr.play(); tr.punchIn();
+    frames(app);                                             // the app sees recording begin
+    CHECK(app.recordMidiNote(true, 60, 100));               // at beat 0
+    tr.advance(24000);                                       // half a second = 1 beat at 120 bpm
+    CHECK(app.recordMidiNote(false, 60, 0));
+    CHECK(app.recordMidiNote(true, 64, 80));                 // still held when recording stops
+    tr.advance(24000);
+    tr.stop();
+    frames(app, 2);
+    const auto& notes = app.midiParts()[static_cast<std::size_t>(part)].clip.notes;
+    CHECK(notes.size() == 2);
+    if (notes.size() == 2) {
+      CHECK(notes[0].pitch == 60 && std::fabs(notes[0].start) < 0.01 && std::fabs(notes[0].length - 1.0) < 0.01 && notes[0].velocity == 100);
+      CHECK(notes[1].pitch == 64 && std::fabs(notes[1].start - 1.0) < 0.01 && notes[1].velocity == 80);
+    }
   }
   {  // the Clip Effects window opens and draws with and without a selected clip
     App app;

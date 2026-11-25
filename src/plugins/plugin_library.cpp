@@ -189,11 +189,11 @@ Hostability classify(Format f, int bitness, const HostCapabilities& caps, std::s
       return Hostability::Native;
     }
     case Format::CLAP:
-      if (!caps.clap) { say("CLAP hosting is not implemented yet."); return Hostability::NotBuilt; }
+      if (!caps.clap) { say("This build has no CLAP host."); return Hostability::NotBuilt; }
       say("Loads in-process.");
       return Hostability::Native;
     case Format::AU:
-      if (!caps.au) { say("AU hosting is not implemented yet (macOS only)."); return Hostability::NotBuilt; }
+      if (!caps.au) { say("Audio Units are hosted on macOS only."); return Hostability::NotBuilt; }
       say("Loads in-process.");
       return Hostability::Native;
   }

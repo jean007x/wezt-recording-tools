@@ -2,10 +2,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include "io/wav.h"
 #include "ui/app.h"
 #include "ui/style.h"
 
@@ -103,6 +105,40 @@ void App::samplerSetMode(Sampler* s, SamplerMode m) {
 }
 
 // ---------------------------------------------------------------------------------------------
+bool App::loadSelectedClipIntoSampler(Sampler* s) {
+  session::Track* tr = session_->track(selTrack_);
+  if (!s || !tr || selClip_ < 0) { setStatus("Select a clip on the timeline first"); return false; }
+  for (const auto& c : tr->source->playlist()) {
+    if (c.id != selClip_ || !c.audio) continue;
+    const std::int64_t avail = static_cast<std::int64_t>(c.audio->frames);
+    const std::int64_t from = std::clamp<std::int64_t>(c.offset, 0, avail), to = std::clamp<std::int64_t>(c.offset + c.length, from, avail);
+    if (to <= from) break;
+    AudioBuffer buf(c.audio->channels, static_cast<std::size_t>(to - from));
+    for (std::size_t ch = 0; ch < buf.channels; ++ch) std::copy(c.audio->channel(ch) + from, c.audio->channel(ch) + to, buf.channel(ch));
+    std::error_code ec;
+    const std::filesystem::path dir = std::filesystem::path(session_->recordFolder());
+    std::filesystem::create_directories(dir, ec);
+    std::string stem = c.name.empty() ? "clip" : c.name;
+    for (char& ch : stem) if (ch == '/' || ch == '\\' || ch == ':') ch = '_';
+    std::filesystem::path out = dir / (stem + "_sample.wav");
+    for (int n = 2; std::filesystem::exists(out); ++n) out = dir / (stem + "_sample_" + std::to_string(n) + ".wav");
+    if (!io::writeWavFloat(out.string(), buf, static_cast<unsigned>(session_->sampleRate()))) { setStatus("Could not write " + out.string()); return false; }
+    Zone z; std::string err;
+    if (!s->loadSampleFile(out.string(), z, &err)) { setStatus("Could not load: " + err); return false; }
+    z.rootKey = 60; z.keyLo = 0; z.keyHi = 127;
+    z.oneShot = s->params().mode == SamplerMode::OneShot;
+    s->clearZones(); selZone_ = 0;
+    sliceSource_ = z.audio; sliceRate_ = z.sampleRate;
+    s->addZone(z);
+    if (s->params().mode == SamplerMode::Slice) samplerReslice(s);
+    viewStart_ = 0.f;
+    setStatus("Loaded clip \"" + c.name + "\" into the sampler");
+    return true;
+  }
+  setStatus("Select a clip on the timeline first");
+  return false;
+}
+
 void App::drawZoneWindow(Sampler* s) {
   ImGui::SetNextWindowSize(ImVec2(520, 420), ImGuiCond_FirstUseEver);
   if (!ImGui::Begin("Sampler zones", &showZones_)) { ImGui::End(); return; }
@@ -197,10 +233,8 @@ void App::drawSamplerWindow() {
       if (st::chip(names[i], p.mode == modes[i], gold, ImVec2(86, 28), goldText)) { samplerSetMode(s, modes[i]); p = s->params(); }
     }
     ImGui::SameLine(0, 10);
-    ImGui::BeginDisabled();
-    st::chip("RECORDER", false, gold, ImVec2(92, 28));
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Recording straight into the sampler is not built yet.\nRecord on a track and bounce, then load the WAV.");
+    if (st::chip("FROM CLIP", false, gold, ImVec2(92, 28))) loadSelectedClipIntoSampler(s);
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Loads the clip selected on the timeline as the sample (replaces the current one).\nRecord on a track first, then select the take.");
     const std::string fname = zones.empty() ? "No sample loaded" : baseName(zones[0].file.empty() ? std::string("(sliced sample)") : zones[0].file);
     ImGui::SameLine();
     ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX() + 8.f, (ImGui::GetWindowWidth() - ImGui::CalcTextSize(fname.c_str()).x) * 0.5f));

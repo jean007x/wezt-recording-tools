@@ -56,7 +56,7 @@ Known limits: structural edits (add/remove/duplicate track, inserts, sends) stop
 a moment, because the graph may only change while it is stopped. File paths are typed in a text box
 (no native file dialog yet). MIDI works: parts are edited in the Piano Roll and Score windows and played through the
 Sampler, Wezt Synth or a hosted VST3/CLAP instrument; a hardware MIDI keyboard plays the selected part's instrument
-(see "MIDI keyboard" below). MIDI output (sending to hardware) and recording MIDI from the keyboard into a part are not built.
+(see "MIDI keyboard" below). While the transport records, notes played on the keyboard are captured into the selected MIDI part (beats from the timeline start) and added as one undo step when recording stops. MIDI output (sending to hardware) is not built.
 
 ## Look
 
@@ -86,7 +86,7 @@ Filter and Amp, with knobs and AHDSR envelope graphs; and an on-screen keyboard.
   cutoff, resonance, drive, envelope depth, keyscale, envelope and velocity. **Amp:** pan, polyphony,
   mono/legato, volume, envelope, velocity.
 
-Not built (shown dimmed with a tooltip): **Recorder** (record into the sampler), **Follow Tempo** and **Speed**
+**From Clip** loads the clip selected on the timeline as the sample (recording straight into the sampler is not built: record on a track, then use this). Not built (shown dimmed with a tooltip): **Follow Tempo** and **Speed**
 (they need time-stretching). The filter types are 12 dB LP/HP/BP only; there are no other filter models.
 
 ## Main window layout
@@ -103,7 +103,7 @@ Top to bottom: title strip ("Edit: <session>"); toolbar; overview strip; the wor
   across its members; `<ALL>` is a switch for all tracks. Groups, markers and hidden tracks are kept while the app runs; they are not
   in the session file yet.
 - **Rulers:** minutes:seconds, bars|beats, and markers (double-click the marker ruler or use the flag button to add one).
-- **Track headers:** colour bar, name, record-arm, input monitor (dimmed, not built), solo, mute, waveform toggle, automation
+- **Track headers:** colour bar, name, record-arm, input monitor (I: click cycles Auto, Input, Off), solo, mute, waveform toggle, automation
   read/off, input and output boxes, vol and pan fields. Clips show a name bar, a clip-gain tag and fades.
 - **Mix:** a full window, or **Float mix** to put it over the Edit window; strips have a colour band, inserts, sends, I/O, automation
   mode, pan knob, fader with LED meters, and the name.

@@ -136,6 +136,12 @@ class App {
   void setMuteGrouped(session::TrackId t, bool on);
   void setSoloGrouped(session::TrackId t, bool on);
   void setArmGrouped(session::TrackId t, bool on);
+  // Input monitoring: Auto -> Input -> Off -> Auto.
+  void cycleMonitor(session::TrackId t);
+  // Loads the selected timeline clip (the part it plays) as the sampler's sample, replacing the current one.
+  bool loadSelectedClipIntoSampler(instruments::Sampler* s);
+  // Captures a keyboard note into the selected MIDI part while the transport records. False when not recording or no part is selected.
+  bool recordMidiNote(bool down, int pitch, int velocity);
   void setTrackHidden(session::TrackId t, bool hidden) { if (hidden) hidden_.insert(t); else hidden_.erase(t); }
   bool trackHidden(session::TrackId t) const { return hidden_.count(t) != 0; }
   void nudgeSelectedClip(int direction);              // by the nudge value in the toolbar
@@ -245,8 +251,12 @@ class App {
   std::string voiceDir() const;
   void drawScoreWindow();
   void watchEdits();
+  // MIDI recording: while the transport records, notes from the keyboard are captured into the selected MIDI part (beats from the timeline
+  // start, so the part plays them back in step) and committed as one undo step when recording stops.
+  void commitRecordedMidi();
   void commitRecordedTakes();   // recorded audio becomes clips once the transport has stopped
   bool wasRecording_ = false, takesPending_ = false;
+  int midiRecPart_ = -1; std::map<int, std::pair<double, int>> midiHeld_; std::vector<music::Note> midiTaken_; bool midiWasRecording_ = false;
   bool sessionCommandFromText(const std::string& text, std::string& reply);
   template <class F> void forGroup(session::TrackId t, F f);
   std::int64_t nudgeFrames() const;

@@ -53,6 +53,16 @@ template <class F> void App::forGroup(TrackId t, F f) {
 }
 void App::setMuteGrouped(TrackId t, bool on) { forGroup(t, [&](TrackId, session::Track* tr) { tr->strip->setMute(on); }); }
 void App::setSoloGrouped(TrackId t, bool on) { forGroup(t, [&](TrackId id, session::Track*) { session_->setSolo(id, on); }); }
+void App::cycleMonitor(TrackId id) {
+  session::Track* t = session_->track(id);
+  if (!t) return;
+  using M = session::MonitorMode;
+  const M m = t->source->monitorMode();
+  t->source->setMonitorMode(m == M::Auto ? M::Input : m == M::Input ? M::Off : M::Auto);
+  const M n = t->source->monitorMode();
+  setStatus(std::string("Input monitoring: ") + (n == M::Auto ? "Auto" : n == M::Input ? "Input" : "Off"));
+}
+
 void App::setArmGrouped(TrackId t, bool on) { forGroup(t, [&](TrackId, session::Track* tr) { tr->source->arm(on); }); }
 
 int App::addMarker(std::int64_t frame, const std::string& name) {
@@ -191,11 +201,11 @@ void App::drawTransport() {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tools[i].tip);
   }
   ImGui::SameLine(0, 8);
-  st::toolButton("##tscrub", st::TIcon::Scrub, false, blue, ImVec2(30, 22), false);
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Scrub: not built yet");
+  if (st::toolButton("##tscrub", st::TIcon::Scrub, tool_ == Tool::Scrubber, blue, ImVec2(30, 22))) execute(Command::ToolScrubber);
+  if (ImGui::IsItemHovered()) ImGui::SetTooltip("Scrubber: drag on the timeline to hear the audio at the mouse position");
   ImGui::SameLine(0, 2);
-  st::toolButton("##tpen", st::TIcon::Pencil, false, blue, ImVec2(30, 22), false);
-  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Pencil: not built yet");
+  if (st::toolButton("##tpen", st::TIcon::Pencil, tool_ == Tool::Pencil, blue, ImVec2(30, 22))) execute(Command::ToolPencil);
+  if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pencil: draw the clip gain line on the selected clip");
   ImGui::EndGroup();
 
   // ---- second row: transport, follow/loop, tracks (+ - Dup), markers, window
@@ -552,8 +562,11 @@ void App::drawEdit() {
       if (ImGui::IsItemHovered()) ImGui::SetTooltip("Record enable");
       if (!small) {
         ImGui::SameLine(0, 2);
-        ImGui::BeginDisabled(); sBtn("I", false, 0xFF3FA84A, 20); ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Input monitoring: not built yet");
+        const auto mm = t->source->monitorMode();
+        if (sBtn("I", mm != session::MonitorMode::Auto, mm == session::MonitorMode::Input ? 0xFF3FA84A : 0xFF6A6A6A, 20)) cycleMonitor(id);
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip("Input monitoring: %s\nClick to change: Auto (input while stopped or recording), Input (always), Off",
+                            mm == session::MonitorMode::Auto ? "Auto" : mm == session::MonitorMode::Input ? "Input (always)" : "Off");
       }
       ImGui::SameLine(0, 2);
       if (sBtn("S", t->solo, 0xFF1EB4E8, 22)) setSoloGrouped(id, !t->solo);

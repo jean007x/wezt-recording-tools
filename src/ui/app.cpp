@@ -838,6 +838,7 @@ void App::frame() {
   engine_->metronome().setBeatsPerBar(beatsPerBar_);
   handleKeys();
   commitRecordedTakes();
+  commitRecordedMidi();
   trackSelectionHistory();
   watchEdits();
   drawMenu();

@@ -219,6 +219,45 @@ void App::closeHardwareMidi() {
   hwMidi_.reset(); hwTrack_.clear();
 }
 
+bool App::recordMidiNote(bool down, int pitch, int velocity) {
+  auto& tr = engine_->transport();
+  if (!tr.recording() || !tr.playing()) return false;
+  if (midiRecPart_ < 0) midiRecPart_ = selPart_;
+  if (midiRecPart_ < 0 || midiRecPart_ >= static_cast<int>(midiParts_.size())) return false;
+  const double beat = static_cast<double>(tr.position()) / session_->sampleRate() * static_cast<double>(tempo_) / 60.0;
+  if (down) { midiHeld_[pitch] = {beat, std::clamp(velocity, 1, 127)}; return true; }
+  auto it = midiHeld_.find(pitch);
+  if (it == midiHeld_.end()) return false;
+  music::Note n;
+  n.pitch = pitch; n.start = it->second.first; n.velocity = it->second.second;
+  n.length = std::max(0.05, beat - n.start);
+  midiTaken_.push_back(n);
+  midiHeld_.erase(it);
+  return true;
+}
+
+// Once recording has stopped the captured notes join the part (one undo step).
+void App::commitRecordedMidi() {
+  const bool rec = engine_->transport().recording() && engine_->transport().playing();
+  if (midiWasRecording_ && !rec) {
+    const double beat = static_cast<double>(engine_->transport().position()) / session_->sampleRate() * static_cast<double>(tempo_) / 60.0;
+    for (auto& h : midiHeld_) {   // keys still down when recording stopped end here
+      music::Note n; n.pitch = h.first; n.start = h.second.first; n.velocity = h.second.second; n.length = std::max(0.05, beat - n.start);
+      midiTaken_.push_back(n);
+    }
+    midiHeld_.clear();
+    if (!midiTaken_.empty() && midiRecPart_ >= 0 && midiRecPart_ < static_cast<int>(midiParts_.size())) {
+      const auto notes = midiTaken_;
+      const std::size_t count = notes.size();
+      editMidiPart(midiRecPart_, "Record MIDI", [&](edit::PianoRoll& r) { for (const auto& n : notes) r.addNote(n.pitch, n.start, n.length, n.velocity); });
+      setStatus("Recorded " + std::to_string(count) + (count == 1 ? " note" : " notes") + " into \"" + midiParts_[static_cast<std::size_t>(midiRecPart_)].name + "\"");
+    }
+    midiTaken_.clear();
+    midiRecPart_ = -1;
+  }
+  midiWasRecording_ = rec;
+}
+
 void App::pollHardwareMidi() {
   if (!hwTried_) {   // the first keyboard found is opened once, quietly
     hwTried_ = true;
@@ -245,6 +284,8 @@ void App::pollHardwareMidi() {
       }
       continue;
     }
+    if (m.type == midi::MidiMessage::NoteOn) recordMidiNote(true, m.a, m.b);
+    else if (m.type == midi::MidiMessage::NoteOff) recordMidiNote(false, m.a, 0);
     if (m.type == midi::MidiMessage::NoteOn) {
       if (selPart_ < 0) continue;
       MidiPart& part = midiParts_[static_cast<std::size_t>(selPart_)];
