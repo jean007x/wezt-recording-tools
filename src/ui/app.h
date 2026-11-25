@@ -140,6 +140,8 @@ class App {
   void cycleMonitor(session::TrackId t);
   // Loads the selected timeline clip (the part it plays) as the sampler's sample, replacing the current one.
   bool loadSelectedClipIntoSampler(instruments::Sampler* s);
+  // Time-stretches the sampler's sample from `sourceBpm` to the project tempo (offline, pitch unchanged). The patch still refers to the original file.
+  bool sampleFollowTempo(instruments::Sampler* s, double sourceBpm);
   // Captures a keyboard note into the selected MIDI part while the transport records. False when not recording or no part is selected.
   bool recordMidiNote(bool down, int pitch, int velocity);
   void setTrackHidden(session::TrackId t, bool hidden) { if (hidden) hidden_.insert(t); else hidden_.erase(t); }
@@ -282,7 +284,8 @@ class App {
   void drawBigCounter();
   void drawClipFxWindow();
   bool showClipFx_ = false;
-  float clipFxGainDb_ = 0.f;
+  float clipFxGainDb_ = 0.f, clipFxStretchPct_ = 100.f, clipFxSrcBpm_ = 120.f, clipFxSemis_ = 0.f; int clipFxMode_ = 0;
+  float sampSrcBpm_ = 120.f;
   void groupTracksCommand();
   TimelineGeometry geo_;
   bool online_ = false;   // follow MIDI transport messages from the connected MIDI port

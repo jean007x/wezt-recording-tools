@@ -14,6 +14,7 @@
 #include "engine/delay_line.h"
 #include "io/wav.h"
 #include "edit/undo.h"
+#include "dsp/elastic.h"
 #include "session/session.h"
 
 using namespace wezt;
@@ -773,6 +774,13 @@ static void testProcessClip() {
     CHECK(fs::exists(k.file));
   }
   CHECK(!s.processClip(t, id, "x", [](AudioBuffer&, double, std::string* e) { if (e) *e = "refused"; return false; }, &err) && err == "refused");
+  {   // time-stretch: the clip follows the new length
+    const std::int64_t before = s.track(t)->source->playlist()[0].length;
+    CHECK(s.processClip(t, id, "stretch", [](AudioBuffer& x, double rate, std::string*) {
+      AudioBuffer o = dsp::elasticStretch(x, 2.0, dsp::ElasticMode::Polyphonic, rate); if (o.frames == 0) return false; x = std::move(o); return true; }, &err, true));
+    const auto k = s.track(t)->source->playlist()[0];
+    CHECK(k.start == 100 && std::llabs(k.length - 2 * before) < before / 20);
+  }
   CHECK(!s.processClip(t, 9999, "x", [](AudioBuffer&, double, std::string*) { return true; }, &err));
 }
 

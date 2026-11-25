@@ -638,7 +638,7 @@ bool Session::removeClip(TrackId id, int clipId) {
   return true;
 }
 
-bool Session::processClip(TrackId id, int clipId, const std::string& tag, const std::function<bool(AudioBuffer&, double, std::string*)>& fn, std::string* error) {
+bool Session::processClip(TrackId id, int clipId, const std::string& tag, const std::function<bool(AudioBuffer&, double, std::string*)>& fn, std::string* error, bool followLength) {
   Track* t = track(id);
   if (!t) { if (error) *error = "no such track"; return false; }
   auto list = t->source->playlist();
@@ -663,7 +663,8 @@ bool Session::processClip(TrackId id, int clipId, const std::string& tag, const 
   std::int64_t got = 0;
   if (!loadWav(n.file, rate_, n.audio, &got, error)) return false;
   n.offset = 0;
-  n.length = std::min(n.length, got);
+  n.length = followLength ? got : std::min(n.length, got);
+  n.fadeIn = std::min(n.fadeIn, n.length / 2); n.fadeOut = std::min(n.fadeOut, n.length / 2);
   *c = std::move(n);
   t->source->setPlaylist(std::move(list));
   return true;

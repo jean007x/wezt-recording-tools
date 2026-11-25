@@ -196,7 +196,8 @@ class Session {
   // Runs a clip's audio (the part it plays: offset..offset+length) through `fn`, writes the result as a new WAV in the audio folder and
   // points the clip at it (offset 0, same start and length; fades, gain and gain line stay). `fn` edits the buffer in place and may
   // return false with a message to refuse. Returns true on success.
-  bool processClip(TrackId t, int clipId, const std::string& tag, const std::function<bool(AudioBuffer&, double sampleRate, std::string*)>& fn, std::string* error = nullptr);
+  bool processClip(TrackId t, int clipId, const std::string& tag, const std::function<bool(AudioBuffer&, double sampleRate, std::string*)>& fn, std::string* error = nullptr, bool followLength = false);
+  // followLength: the clip takes the length of what `fn` returns (time-stretch); otherwise it keeps its length.
 
   // ---- rendering a track ----
   std::string recordFolder() const { return recordFolderFor(); }

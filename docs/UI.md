@@ -86,8 +86,7 @@ Filter and Amp, with knobs and AHDSR envelope graphs; and an on-screen keyboard.
   cutoff, resonance, drive, envelope depth, keyscale, envelope and velocity. **Amp:** pan, polyphony,
   mono/legato, volume, envelope, velocity.
 
-**From Clip** loads the clip selected on the timeline as the sample (recording straight into the sampler is not built: record on a track, then use this). Not built (shown dimmed with a tooltip): **Follow Tempo** and **Speed**
-(they need time-stretching). The filter types are 12 dB LP/HP/BP only; there are no other filter models.
+**From Clip** loads the clip selected on the timeline as the sample (recording straight into the sampler is not built: record on a track, then use this). **Follow Tempo** (with the tempo the sample was recorded at) time-stretches the sample offline to the project tempo with the Elastic Audio engine, keeping the pitch; press it again after the tempo changes. The patch still refers to the original file, so a reloaded patch has the unstretched sample. The filter types are 12 dB LP/HP/BP only; there are no other filter models.
 
 ## Main window layout
 
@@ -107,7 +106,7 @@ Top to bottom: title strip ("Edit: <session>"); toolbar; overview strip; the wor
   read/off, input and output boxes, vol and pan fields. Clips show a name bar, a clip-gain tag and fades.
 - **Mix:** a full window, or **Float mix** to put it over the Edit window; strips have a colour band, inserts, sends, I/O, automation
   mode, pan knob, fader with LED meters, and the name.
-- **Bottom tabs:** **Piano Roll**, **Score**, **Clips**, **Sampler** and **Immersive** (ours), plus **Clip FX**: an offline window that processes the selected clip into a new audio file (the original file is kept): Normalize, Reverse, Invert polarity, Gain, and the Wezt EQ, Compressor, Limiter and Stereo Width at default settings. The clip gain line (drawn with the Pencil tool) is shown on the clip.
+- **Bottom tabs:** **Piano Roll**, **Score**, **Clips**, **Sampler** and **Immersive** (ours), plus **Clip FX**: an offline window that processes the selected clip into a new audio file (the original file is kept): Normalize, Reverse, Invert polarity, Gain, time and pitch (Elastic Audio: stretch to a length, fit a clip recorded at a given tempo to the project tempo, shift pitch), and the Wezt EQ, Compressor, Limiter and Stereo Width at default settings. The clip gain line (drawn with the Pencil tool) is shown on the clip.
 
 ## Drawing plug-in automation
 

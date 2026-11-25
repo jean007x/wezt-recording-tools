@@ -8,6 +8,7 @@
 #include "imgui.h"
 #include "misc/cpp/imgui_stdlib.h"
 #include "edit/clip_tools.h"
+#include "dsp/elastic.h"
 #include "instruments/builtin.h"
 #include "ui/app.h"
 
@@ -140,17 +141,17 @@ void App::drawClipsWindow() {
 namespace wezt::ui {
 
 void App::drawClipFxWindow() {
-  ImGui::SetNextWindowSize(ImVec2(360, 330), ImGuiCond_FirstUseEver);
+  ImGui::SetNextWindowSize(ImVec2(400, 470), ImGuiCond_FirstUseEver);
   if (!ImGui::Begin("Clip Effects", &showClipFx_)) { ImGui::End(); return; }
   session::Track* tr = session_->track(selTrack_);
   const bool have = tr && selClip_ >= 0;
   if (!have) ImGui::TextDisabled("Select a clip on the timeline first.");
   else ImGui::TextDisabled("Applies to the selected clip, into a new audio file (the original file stays).");
   ImGui::Separator();
-  auto run = [&](const char* tag, const char* done, const std::function<bool(AudioBuffer&, double, std::string*)>& fn) {
+  auto run = [&](const char* tag, const char* done, const std::function<bool(AudioBuffer&, double, std::string*)>& fn, bool follow = false) {
     std::string err;
     bool ok = false;
-    WEZT_PAUSED(ok = session_->processClip(selTrack_, selClip_, tag, fn, &err));
+    WEZT_PAUSED(ok = session_->processClip(selTrack_, selClip_, tag, fn, &err, follow));
     setStatus(ok ? std::string(done) : "Clip effect: " + err);
   };
   ImGui::BeginDisabled(!have);
@@ -173,6 +174,43 @@ void App::drawClipFxWindow() {
   if (ImGui::Button("Apply gain")) {
     const float db = clipFxGainDb_;
     run("gain", "Gain applied", [db](AudioBuffer& b, double, std::string*) { const float g = std::pow(10.f, db / 20.f); for (std::size_t c = 0; c < b.channels; ++c) for (std::size_t i = 0; i < b.frames; ++i) b.channel(c)[i] *= g; return true; });
+  }
+  ImGui::Separator();
+  ImGui::TextDisabled("Time and pitch (Elastic Audio)");
+  {
+    const char* modes[] = {"Polyphonic", "Rhythmic", "Monophonic", "Varispeed (pitch follows)"};
+    ImGui::SetNextItemWidth(200);
+    ImGui::Combo("mode##fxm", &clipFxMode_, modes, 4);
+    const auto mode = static_cast<dsp::ElasticMode>(clipFxMode_);
+    auto stretch = [&](double ratio, const char* done) {
+      run("stretch", done, [ratio, mode](AudioBuffer& b, double rate, std::string* e) {
+        AudioBuffer out = dsp::elasticStretch(b, ratio, mode, rate);
+        if (out.frames == 0) { if (e) *e = "the stretch is out of range (0.05x to 20x)"; return false; }
+        b = std::move(out);
+        return true;
+      }, true);
+    };
+    ImGui::SetNextItemWidth(160);
+    ImGui::SliderFloat("##fxst", &clipFxStretchPct_, 25.f, 400.f, "length %.0f %%");
+    ImGui::SameLine();
+    if (ImGui::Button("Stretch")) stretch(static_cast<double>(clipFxStretchPct_) / 100.0, "Clip stretched");
+    ImGui::SetNextItemWidth(100);
+    ImGui::DragFloat("##fxbpm", &clipFxSrcBpm_, 0.5f, 30.f, 300.f, "%.1f bpm");
+    ImGui::SameLine();
+    if (ImGui::Button("Fit to project tempo")) stretch(static_cast<double>(clipFxSrcBpm_) / static_cast<double>(std::max(20.f, tempo_)), "Clip fitted to the project tempo");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The clip was played at the tempo on the left; stretch it to the project tempo, same pitch.");
+    ImGui::SetNextItemWidth(160);
+    ImGui::SliderFloat("##fxsemi", &clipFxSemis_, -12.f, 12.f, "%.1f semitones");
+    ImGui::SameLine();
+    if (ImGui::Button("Shift pitch")) {
+      const double semis = static_cast<double>(clipFxSemis_);
+      run("pitch", "Pitch shifted", [semis, mode](AudioBuffer& b, double rate, std::string* e) {
+        AudioBuffer out = dsp::elasticPitch(b, semis, mode, rate);
+        if (out.frames == 0) { if (e) *e = "could not shift the pitch"; return false; }
+        b = std::move(out);
+        return true;
+      });
+    }
   }
   ImGui::Separator();
   ImGui::TextDisabled("Wezt effects, at their default settings");

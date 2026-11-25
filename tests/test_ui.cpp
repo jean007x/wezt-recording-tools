@@ -391,6 +391,9 @@ int main() {
       app.selectClip(sampT, cid);
       CHECK(app.loadSelectedClipIntoSampler(sm));
       CHECK(sm->zones().size() == 1 && sm->zones()[0].audio && sm->zones()[0].audio->frames == 3000);
+      const auto framesBefore = sm->zones()[0].audio->frames;
+      CHECK(app.sampleFollowTempo(sm, 240.0));                // from 240 bpm to the project's 120: twice as long
+      CHECK(std::llabs(static_cast<long long>(sm->zones()[0].audio->frames) - static_cast<long long>(framesBefore) * 2) < static_cast<long long>(framesBefore) / 10);
       app.session().removeTrack(sampT);
       app.selectTrack(app.session().trackIds().back());
     }

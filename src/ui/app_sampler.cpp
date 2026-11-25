@@ -7,6 +7,7 @@
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include "dsp/elastic.h"
 #include "io/wav.h"
 #include "ui/app.h"
 #include "ui/style.h"
@@ -105,6 +106,23 @@ void App::samplerSetMode(Sampler* s, SamplerMode m) {
 }
 
 // ---------------------------------------------------------------------------------------------
+bool App::sampleFollowTempo(Sampler* s, double sourceBpm) {
+  if (!s || s->zones().empty()) { setStatus("Load a sample first"); return false; }
+  Zone z = s->zones()[0];
+  std::shared_ptr<const AudioBuffer> src = sliceSource_ ? sliceSource_ : z.audio;
+  if (!src || src->frames == 0 || sourceBpm < 20.0) { setStatus("Nothing to stretch"); return false; }
+  AudioBuffer out = dsp::elasticStretch(*src, sourceBpm / static_cast<double>(std::max(20.f, tempo_)), dsp::ElasticMode::Polyphonic, z.sampleRate > 0 ? z.sampleRate : session_->sampleRate());
+  if (out.frames == 0) { setStatus("The tempo change is out of range for stretching"); return false; }
+  z.audio = std::make_shared<const AudioBuffer>(std::move(out));
+  z.start = 0; z.end = -1;
+  const bool sliced = s->params().mode == SamplerMode::Slice;
+  sliceSource_ = z.audio; sliceRate_ = z.sampleRate;
+  if (sliced) { samplerReslice(s); }
+  else s->updateZone(0, z);
+  setStatus("Sample stretched from " + std::to_string(static_cast<int>(sourceBpm)) + " bpm to " + std::to_string(static_cast<int>(tempo_)) + " bpm");
+  return true;
+}
+
 bool App::loadSelectedClipIntoSampler(Sampler* s) {
   session::Track* tr = session_->track(selTrack_);
   if (!s || !tr || selClip_ < 0) { setStatus("Select a clip on the timeline first"); return false; }
@@ -492,10 +510,12 @@ void App::drawSamplerWindow() {
       if (st::chip("Play to End", playToEnd_, gold, ImVec2(86, 0), goldText)) { playToEnd_ = true; samplerRemapKeys(s); }
       if (ImGui::IsItemHovered()) ImGui::SetTooltip("A slice plays to its end even after the key is released");
       ImGui::SameLine(0, 14);
-      ImGui::BeginDisabled();
-      st::chip("Follow Tempo", false, gold, ImVec2(104, 0));
-      ImGui::EndDisabled();
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Needs time-stretching, which is not built yet.\nUse the pitch controls or the tempo-synced LFOs in the meantime.");
+      ImGui::SetNextItemWidth(70);
+      ImGui::DragFloat("##sbpm", &sampSrcBpm_, 0.5f, 30.f, 300.f, "%.1f bpm");
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("The tempo the sample was recorded at");
+      ImGui::SameLine(0, 2);
+      if (st::chip("Follow Tempo", false, gold, ImVec2(104, 0))) sampleFollowTempo(s, static_cast<double>(sampSrcBpm_));
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("Stretches the sample from the tempo on the left to the project tempo, keeping the pitch.\nDone offline: press it again after the tempo changes.");
     } else if (!zones.empty()) {
       Zone z = zones[static_cast<std::size_t>(std::clamp(selZone_, 0, static_cast<int>(zones.size()) - 1))];
       bool zc = false;
