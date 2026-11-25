@@ -197,7 +197,7 @@ bool App::isImplemented(Command c) const {
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
     case Command::ToolScrubber: case Command::ToolPencil:
     case Command::CycleEditModes: case Command::CycleEditTools:
-    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste:
+    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste: case Command::SpecialPaste: case Command::SpotDialog:
     case Command::MuteClips: case Command::TrimClipToSelection: case Command::TrimStartToInsertion: case Command::TrimEndToInsertion:
     case Command::InsertSilence: case Command::RepeatSelection: case Command::HealSeparation: case Command::StopRecord: case Command::Pause: case Command::ZoomToggle:
     case Command::OnlinePlayback: case Command::PlayHalfSpeed: case Command::LoopRecord: case Command::ConsolidateClip: case Command::BounceTrack: case Command::CommitTrack:
@@ -377,6 +377,8 @@ void App::execute(Command c) {
     case Command::Copy: copySelectedClip(false); break;
     case Command::Cut: copySelectedClip(true); break;
     case Command::Paste: pasteClip(); break;
+    case Command::SpecialPaste: showSpecialPaste_ = true; break;
+    case Command::SpotDialog: openSpot(); break;
     case Command::SeparateClip: splitSelectedClip(); break;
     case Command::Undo: if (!undoEdit()) setStatus("Nothing to undo"); break;
     case Command::Redo: if (!redoEdit()) setStatus("Nothing to redo"); break;
@@ -495,6 +497,56 @@ void App::copySelectedClip(bool cut) {
     if (cut) { if (session_->removeClip(selTrack_, selClip_)) selClip_ = -1; }
   }
   setStatus(std::string(cut ? "Cut " : "Copied ") + (range ? "the selected range" : "the clip"));
+}
+
+// Special Paste: the clipboard pasted `repeats` times in a row with `gapSeconds` between copies, at the playhead on the selected track.
+// `merge` keeps what is underneath (the new clips overlap it); otherwise the pasted range replaces it.
+bool App::pasteSpecial(int repeats, double gapSeconds, bool merge) {
+  if (clipboard_.empty()) { setStatus("Nothing to paste: copy or cut a clip or a range first"); return false; }
+  session::Track* t = session_->track(selTrack_);
+  if (!t) return false;
+  repeats = std::clamp(repeats, 1, 200);
+  const std::int64_t gap = static_cast<std::int64_t>(std::max(0.0, gapSeconds) * session_->sampleRate());
+  const std::int64_t at = position();
+  auto list = t->source->playlist();
+  int last = -1;
+  for (int r = 0; r < repeats; ++r) {
+    const std::int64_t base = at + static_cast<std::int64_t>(r) * (clipboardLen_ + gap);
+    if (!merge) list = removeRange(t->nextClipId, std::move(list), base, base + clipboardLen_);
+    for (const auto& c : clipboard_) {
+      Clip n = c;
+      n.id = t->nextClipId++;
+      n.start = base + c.start;
+      last = n.id;
+      list.push_back(std::move(n));
+    }
+  }
+  t->source->setPlaylist(std::move(list));
+  selClip_ = last;
+  setStatus("Pasted " + std::to_string(repeats) + (repeats == 1 ? " copy" : " copies"));
+  return true;
+}
+
+void App::openSpot() {
+  const session::Track* t = session_->track(selTrack_);
+  if (!t || selClip_ < 0) { setStatus("Select a clip first, then open the Spot dialog"); return; }
+  for (const auto& c : t->source->playlist()) if (c.id == selClip_) { spotTrack_ = selTrack_; spotClip_ = c.id; spotSeconds_ = static_cast<double>(c.start) / session_->sampleRate(); showSpot_ = true; return; }
+  setStatus("Select a clip first, then open the Spot dialog");
+}
+
+// Moves a clip so it starts at `newStart` (a frame), keeping everything else about it.
+bool App::spotClip(TrackId id, int clipId, std::int64_t newStart) {
+  session::Track* t = session_->track(id);
+  if (!t) return false;
+  auto list = t->source->playlist();
+  for (auto& c : list) {
+    if (c.id != clipId) continue;
+    if (c.locked) { setStatus("The clip is locked"); return false; }
+    c.start = std::max<std::int64_t>(0, newStart);
+    t->source->setPlaylist(std::move(list));
+    return true;
+  }
+  return false;
 }
 
 void App::pasteClip() {
@@ -894,6 +946,8 @@ void App::frame() {
   if (showMemory_) drawMemoryWindow();
   if (showBigCounter_) drawBigCounter();
   if (showClipFx_) drawClipFxWindow();
+  if (showSpecialPaste_) drawSpecialPasteWindow();
+  if (showSpot_) drawSpotWindow();
   if (showClips_) drawClipsWindow();
   if (showVoiceBank_) drawVoiceBankWindow();
   if (showPlugParams_) drawPluginParamsWindow();

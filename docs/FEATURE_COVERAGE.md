@@ -22,7 +22,7 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 
 | Feature | State |
 |---|---|
-| Edit modes Shuffle / Slip / Grid; Spot | Shuffle (`shuffleClose`), Slip, Grid (`snapToGrid`) done; Spot dialog not built |
+| Edit modes Shuffle / Slip / Grid; Spot | Shuffle (`shuffleClose`), Slip, Grid (`snapToGrid`) done; Spot dialog done (click a clip in Spot mode, or Shift+F3: type an exact start time) |
 | Tools: Trim, Selector, Grabber, Smart, Zoomer | in the UI; Scrubber, Pencil, Time/Loop trim variants not built |
 | Counter, sub counter, selection start/end/length, rulers, overview, track/group lists, markers ruler, track headers | in the UI |
 | Zoom presets 1-5, nudge and grid value boxes | in the UI |
@@ -33,7 +33,8 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 | Undo / redo, merged drags, history list | done (`edit/undo.h`) and wired to the app |
 | Memory Locations (numbered, ranges, comments, zoom preset, track visibility, pre/post-roll), saved | done; window in the UI |
 | Clips list window, playlists (alternate takes) and comping | done (see "v0.7 additions") |
-| Heal Separation, Capture Clip, Special Paste, time operations (insert/cut time, tempo operations) | not built |
+| Special Paste (Ctrl+Shift+V: copies, gap, merge) | done |
+| Capture Clip, time operations (insert/cut time, tempo operations) | not built |
 | Elastic Audio (polyphonic, rhythmic, monophonic, varispeed), Beat Detective | done (see "v0.7 additions") |
 | Melodyne-style note-level pitch editing, ARA | not built |
 | MIDI Editor, Score Editor | built as the piano roll and score windows (see the rows below) |
@@ -114,6 +115,6 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 - **Automation lanes on the main timeline: volume, pan and mute.** The "auto" button on a track header cycles off, volume, pan, mute, and draws that lane over the clips (click to add a point, drag to move, right-click to delete; snaps to the grid; undoable; only while the song is stopped, because the audio thread reads the lane while playing). Compiled and unit-tested (`testStripLaneEdit`) but not clicked on a real screen.
 - **Real-world checks still missing:** the window on a real display, real audio hardware, a real MIDI keyboard, commercial (third-party) plug-ins, a real Claude Desktop session, and a real 32-bit helper.
 - **Packaging:** unsigned archives are built by `release.yml`; there are no installers, and no code signing or macOS notarization (those need certificates).
-- **From the reference document:** Spot dialog, Scrubber, Pencil, Real-Time Properties, MPE, Routing Folders, per-track Commit/Freeze,
+- **From the reference document:** Real-Time Properties, MPE, Routing Folders, per-track Commit/Freeze,
   Track Pin, Extensions API, Speech-to-Text, Project Browser, Workspace, Video, AAF/OMF,
   AU and VST2 loading, AAX/RTAS/TDM (not hostable).

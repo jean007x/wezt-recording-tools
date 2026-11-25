@@ -92,7 +92,7 @@ Filter and Amp, with knobs and AHDSR envelope graphs; and an on-screen keyboard.
 
 Top to bottom: title strip ("Edit: <session>"); toolbar; overview strip; the work area; a bottom tab bar.
 
-- **Toolbar, row 1:** edit modes in a dark green box (Shuffle, Spot, Slip, Grid; the active one is lit), five zoom presets
+- **Toolbar, row 1:** edit modes in a dark green box (Shuffle, Spot, Slip, Grid; the active one is lit; in Spot mode a click on a clip opens the **Spot** dialog to set its exact start, also Shift+F3; **Special Paste**, Ctrl+Shift+V, pastes several copies with a gap, optionally merging with what is underneath), five zoom presets
   (click recalls, Shift+click stores), zoom out/in, waveform height, track height, tools (smart, zoom, trim, selector, grabber;
   scrub and pencil are shown dimmed). **Row 2:** transport, scroll-with-playhead, **+ / - / Dup track buttons**, add marker,
   Edit / Mix / Float mix, tempo. **Right:** main counter in green, sub counter, start / end / length, MIDI In light (flashes on keyboard

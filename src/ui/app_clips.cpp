@@ -241,3 +241,46 @@ void App::drawClipFxWindow() {
 }
 
 }  // namespace wezt::ui
+
+namespace wezt::ui {
+
+void App::drawSpecialPasteWindow() {
+  ImGui::SetNextWindowSize(ImVec2(330, 190), ImGuiCond_FirstUseEver);
+  if (!ImGui::Begin("Special Paste", &showSpecialPaste_)) { ImGui::End(); return; }
+  ImGui::TextDisabled(clipboard_.empty() ? "The clipboard is empty: copy a clip or a range first." : "Pastes at the playhead on the selected track.");
+  ImGui::SetNextItemWidth(120); ImGui::InputInt("copies", &specialRepeats_);
+  specialRepeats_ = std::clamp(specialRepeats_, 1, 200);
+  ImGui::SetNextItemWidth(120); ImGui::InputDouble("gap (s)", &specialGap_, 0.1, 1.0, "%.3f");
+  specialGap_ = std::max(0.0, specialGap_);
+  ImGui::Checkbox("Merge with what is underneath", &specialMerge_);
+  ImGui::BeginDisabled(clipboard_.empty());
+  if (ImGui::Button("Paste", ImVec2(100, 0))) pasteSpecial(specialRepeats_, specialGap_, specialMerge_);
+  ImGui::EndDisabled();
+  ImGui::End();
+}
+
+void App::drawSpotWindow() {
+  ImGui::SetNextWindowSize(ImVec2(340, 210), ImGuiCond_FirstUseEver);
+  if (!ImGui::Begin("Spot", &showSpot_)) { ImGui::End(); return; }
+  const session::Track* t = session_->track(spotTrack_);
+  const session::Clip* clip = nullptr;
+  std::vector<session::Clip> list;
+  if (t) { list = t->source->playlist(); for (const auto& c : list) if (c.id == spotClip_) clip = &c; }
+  if (!clip) { ImGui::TextDisabled("The clip is gone."); ImGui::End(); return; }
+  const double sr = session_->sampleRate();
+  ImGui::Text("%s", clip->name.empty() ? "clip" : clip->name.c_str());
+  ImGui::TextDisabled("length %.3f s, now starts at %.3f s", static_cast<double>(clip->length) / sr, static_cast<double>(clip->start) / sr);
+  ImGui::SetNextItemWidth(140); ImGui::InputDouble("start (s)", &spotSeconds_, 0.01, 1.0, "%.3f");
+  spotSeconds_ = std::max(0.0, spotSeconds_);
+  if (ImGui::Button("Playhead")) spotSeconds_ = static_cast<double>(position()) / sr;
+  ImGui::SameLine();
+  if (ImGui::Button("Selection start")) spotSeconds_ = static_cast<double>(std::min(selStart_, selEnd_)) / sr;
+  ImGui::SameLine();
+  if (ImGui::Button("Session start")) spotSeconds_ = 0.0;
+  if (ImGui::Button("Spot", ImVec2(100, 0))) {
+    if (spotClip(spotTrack_, spotClip_, static_cast<std::int64_t>(std::llround(spotSeconds_ * sr)))) setStatus("Clip spotted to " + std::to_string(spotSeconds_) + " s");
+  }
+  ImGui::End();
+}
+
+}  // namespace wezt::ui

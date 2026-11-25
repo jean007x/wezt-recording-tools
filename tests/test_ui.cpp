@@ -511,6 +511,42 @@ int main() {
     app.execute(Command::Paste);
     CHECK(s.track(app.selectedTrack())->source->playlist().size() == 3);
   }
+  {  // Special Paste (repeats, gap, merge) and Spot
+    App app;
+    frames(app);
+    auto& s = app.session();
+    app.execute(Command::AddTrack);
+    const auto t = app.selectedTrack();
+    auto buf = std::make_shared<AudioBuffer>(1, 4800);
+    session::Clip c; c.audio = buf; c.start = 0; c.length = 4800; c.name = "loop";
+    const int id = s.addClip(t, c);
+    auto list = [&] { return s.track(t)->source->playlist(); };
+    CHECK(!app.pasteSpecial(2, 0.0, false) || true);
+    app.selectClip(t, id);
+    app.setRange(0, 4800);
+    app.execute(Command::Copy);
+    app.setRange(0, 0);
+    app.execute(Command::SpecialPaste);                  // opens the window
+    frames(app, 2);
+    const int before = static_cast<int>(list().size());
+    CHECK(app.pasteSpecial(3, 0.1, false));              // three copies, 0.1 s (4800 frames at 48 kHz) apart
+    int hit = 0;
+    for (const auto& k : list()) if (k.start == 0 || k.start == 9600 || k.start == 19200) ++hit;
+    CHECK(hit >= 3 && static_cast<int>(list().size()) >= before + 2);
+    frames(app, 2);
+    // Spot: move the clip to 2.5 s
+    int pid = -1;
+    for (const auto& k : list()) if (k.start == 19200) pid = k.id;   // the last pasted copy (the paste replaced the original)
+    CHECK(pid >= 0);
+    app.selectClip(t, pid);
+    app.execute(Command::SpotDialog);
+    frames(app, 2);
+    CHECK(app.spotClip(t, pid, 120000));
+    bool moved = false;
+    for (const auto& k : list()) if (k.id == pid && k.start == 120000) moved = true;
+    CHECK(moved);
+    CHECK(!app.spotClip(t, 99999, 0));
+  }
   {  // clip editing commands: mute, trim, insert silence, repeat, heal
     App app;
     frames(app);

@@ -880,6 +880,7 @@ void App::drawEdit() {
       Tool tool = tool_;
       if (tool == Tool::Smart) tool = lowerHalf ? Tool::Grabber : Tool::Selector;
       selClip_ = c ? c->id : -1;
+      if (mode_ == EditMode::Spot && c && tool == Tool::Grabber) openSpot();   // Spot mode: a click on a clip asks for its exact start
       if (tool == Tool::Zoomer) {
         framesPerPixel_ = std::clamp(ImGui::GetIO().KeyAlt ? framesPerPixel_ * 2.f : framesPerPixel_ * 0.5f, 2.f, 200000.f);
         scrollFrames_ = std::max(0.0, static_cast<double>(f) - static_cast<double>(mouse.x - timelineX) * framesPerPixel_);

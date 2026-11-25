@@ -138,6 +138,10 @@ class App {
   void setArmGrouped(session::TrackId t, bool on);
   // Input monitoring: Auto -> Input -> Off -> Auto.
   void cycleMonitor(session::TrackId t);
+  // Special Paste: `repeats` copies in a row, `gapSeconds` apart; merge keeps what is underneath instead of replacing it.
+  bool pasteSpecial(int repeats, double gapSeconds, bool merge);
+  // Spot: moves a clip so it starts exactly at `newStart` (frames).
+  bool spotClip(session::TrackId t, int clipId, std::int64_t newStart);
   // Loads the selected timeline clip (the part it plays) as the sampler's sample, replacing the current one.
   bool loadSelectedClipIntoSampler(instruments::Sampler* s);
   // Time-stretches the sampler's sample from `sourceBpm` to the project tempo (offline, pitch unchanged). The patch still refers to the original file.
@@ -274,6 +278,11 @@ class App {
   void duplicateSelectedClip();
   void copySelectedClip(bool cut);
   void pasteClip();
+  void openSpot();
+  void drawSpecialPasteWindow();
+  void drawSpotWindow();
+  bool showSpecialPaste_ = false, showSpot_ = false;
+  int spotClip_ = -1, specialRepeats_ = 2; session::TrackId spotTrack_ = 0; double spotSeconds_ = 0.0, specialGap_ = 0.0; bool specialMerge_ = false;
   // The clips last copied or cut, with starts relative to the copied range (or 0 for a single clip). They share the audio data,
   // so nothing is duplicated in memory. clipboardLen_ is the length of the copied span.
   std::vector<session::Clip> clipboard_;
