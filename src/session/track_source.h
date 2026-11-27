@@ -32,6 +32,7 @@ struct Clip {
   AutomationLane gainEnv;                        // clip gain line: dB over clip-relative frames; empty = none. Applied before inserts and fader.
   std::string name;
   bool muted = false, locked = false;
+  std::uint8_t color = 0;                        // 0: the track's colour; 1..8: a colour from the palette, to tell clips apart
 };
 
 // A finished recording, as the writer thread left it.

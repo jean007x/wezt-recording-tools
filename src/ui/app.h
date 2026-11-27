@@ -19,6 +19,7 @@
 #include "agent/plugin_agent.h"
 #include "edit/undo.h"
 #include "midi/midi_input.h"
+#include "music/midi_edit.h"
 #include "session/midi_player.h"
 #include "music/midi.h"
 #include "audio/audio_device.h"
@@ -142,8 +143,13 @@ class App {
   // Special Paste: `repeats` copies in a row, `gapSeconds` apart; merge keeps what is underneath instead of replacing it.
   // Capture Clip: the selected range on the selected track becomes a clip of its own.
   bool captureClip();
+  // Clip colour: 0 = the track's colour, 1..8 = palette. The Clip FX window has swatches; Ctrl+Alt+K cycles.
+  int selectedClipColor() const;
+  bool setClipColor(session::TrackId t, int clipId, int color);
   // MIDI output: the keyboard's notes and the MIDI parts go to a hardware device (the output chooser in the Piano Roll). The test hook takes any device.
   bool openMidiOut(std::size_t index);
+  // Real-Time Properties of a part: transpose, velocity, length and quantize applied when it plays.
+  bool setPartRealTime(int part, const music::RealTime& rt) { if (part < 0 || part >= static_cast<int>(midiParts_.size())) return false; midiParts_[static_cast<std::size_t>(part)].rt = rt; return true; }
   void closeMidiOut();
   void setMidiOutput(std::unique_ptr<midi::IMidiOutput> dev);
   bool hasMidiOutput() const { return hwOut_ != nullptr; }
@@ -193,7 +199,7 @@ class App {
   // ---- MIDI parts: note lists edited in the piano roll and the score, saved next to the session ----
   // `liveTrack` names the track whose instruments play this part live from the sequencer (empty = the
   // part only plays when rendered). `liveOwned` marks a track Wezt made for it (it follows the part's instrument).
-  struct MidiPart { std::string name, instrument = "keys"; music::MidiClip clip; std::string liveTrack; bool liveOwned = false; std::uint64_t liveHash = 0; };
+  struct MidiPart { std::string name, instrument = "keys"; music::MidiClip clip; music::RealTime rt; std::string liveTrack; bool liveOwned = false; std::uint64_t liveHash = 0; };
   const std::vector<MidiPart>& midiParts() const { return midiParts_; }
   int selectedMidiPart() const { return selPart_; }
   void selectMidiPart(int i) {

@@ -23,7 +23,7 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 | Feature | State |
 |---|---|
 | Edit modes Shuffle / Slip / Grid; Spot | Shuffle (`shuffleClose`), Slip, Grid (`snapToGrid`) done; Spot dialog done (click a clip in Spot mode, or Shift+F3: type an exact start time) |
-| Tools: Trim, Selector, Grabber, Smart, Zoomer | in the UI; Scrubber, Pencil, Time/Loop trim variants not built |
+| Tools: Trim, Selector, Grabber, Smart, Zoomer | in the UI, with Scrubber and Pencil (gain line); Time/Loop trim variants not built |
 | Counter, sub counter, selection start/end/length, rulers, overview, track/group lists, markers ruler, track headers | in the UI |
 | Zoom presets 1-5, nudge and grid value boxes | in the UI |
 | Tab to Transients | engine only (`tabToNextTransient`, `tabToPreviousTransient`) |
@@ -38,7 +38,8 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 | Elastic Audio (polyphonic, rhythmic, monophonic, varispeed), Beat Detective | done (see "v0.7 additions") |
 | Melodyne-style note-level pitch editing, ARA | not built |
 | MIDI Editor, Score Editor | built as the piano roll and score windows (see the rows below) |
-| Real-Time Properties, MPE | not built |
+| Real-Time Properties | done for MIDI parts (Piano Roll: transpose, velocity, length %, quantize, applied when the part plays; saved with the session); not for audio clips |
+| MPE | not built |
 
 ## Mix window
 
@@ -49,8 +50,8 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 | Thin Automation | done (`AutomationLane::thin`) |
 | VCA masters | done (summed dB, saved/loaded); no strip in the Mix window yet |
 | Aux inputs | covered by buses; Routing Folders, Master Fader, Video tracks as separate track types not built |
-| Commit / Freeze | offline bounce exists; per-track commit not built |
-| Track Pin, Playlist colour coding | Track Pin done (P on the header, Ctrl+Shift+P: pinned tracks stay at the top while the rest scroll); playlist colours not built |
+| Commit / Freeze | offline bounce, Commit Track and Bounce Track (to a new track) exist; Freeze is not built |
+| Track Pin, Playlist colour coding | Track Pin done (P on the header, Ctrl+Shift+P: pinned tracks stay at the top while the rest scroll); clip colours done (Clip FX window swatches, Ctrl+Alt+K, saved with the session) |
 | LUFS, peak meters | LUFS in analysis and immersive meter; VU / K-System not built |
 
 ## Other windows and systems
@@ -115,6 +116,6 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 - **Automation lanes on the main timeline: volume, pan and mute.** The "auto" button on a track header cycles off, volume, pan, mute, and draws that lane over the clips (click to add a point, drag to move, right-click to delete; snaps to the grid; undoable; only while the song is stopped, because the audio thread reads the lane while playing). Compiled and unit-tested (`testStripLaneEdit`) but not clicked on a real screen.
 - **Real-world checks still missing:** the window on a real display, real audio hardware, a real MIDI keyboard, commercial (third-party) plug-ins, a real Claude Desktop session, and a real 32-bit helper.
 - **Packaging:** unsigned archives are built by `release.yml`; there are no installers, and no code signing or macOS notarization (those need certificates).
-- **From the reference document:** Real-Time Properties, MPE, Routing Folders, per-track Commit/Freeze,
+- **From the reference document:** MPE, Routing Folders, Freeze,
   Extensions API, Speech-to-Text, Project Browser, Workspace, Video, AAF/OMF,
   AU and VST2 loading, AAX/RTAS/TDM (not hostable).

@@ -18,6 +18,8 @@ inline ImU32 trackColor(int id) {
   static const ImU32 c[] = {0xFFD9A441, 0xFF4DA8E8, 0xFF6CCB5F, 0xFF4F8CF0, 0xFFD066C4, 0xFFC8C743, 0xFF7B6CE8, 0xFF3FC7E0};
   return c[((id % 8) + 8) % 8];
 }
+// A clip colour: 0 keeps the track's own, 1..8 pick from the palette (the same eight colours the tracks use, in another order).
+inline ImU32 clipColor(int index, ImU32 trackCol) { return index <= 0 ? trackCol : trackColor(index + 3); }
 // Multiply the rgb of a colour (k > 1 brightens, towards white when it saturates).
 inline ImU32 shade(ImU32 c, float k, int alpha = -1) {
   const auto ch = [&](int shift) { return static_cast<int>(std::clamp(static_cast<float>((c >> shift) & 0xFF) * k, 0.f, 255.f)); };

@@ -873,7 +873,7 @@ bool Session::save(const std::string& path, std::string* error) {
       o << kind << " ";
       if (!pl.empty()) o << "pl=" << enc(pl) << " ";
       o << "file=" << enc(f) << " start=" << c.start << " offset=" << c.offset << " length=" << c.length << " gainDb=" << fnum(c.gainDb)
-        << " fadeIn=" << c.fadeIn << " fadeOut=" << c.fadeOut << " name=" << enc(c.name) << " muted=" << c.muted << " locked=" << c.locked;
+        << " fadeIn=" << c.fadeIn << " fadeOut=" << c.fadeOut << " name=" << enc(c.name) << " muted=" << c.muted << " locked=" << c.locked << " color=" << static_cast<int>(c.color);
       if (!c.gainEnv.empty()) {
         o << " env=";
         for (std::size_t i = 0; i < c.gainEnv.points().size(); ++i) o << (i ? "," : "") << c.gainEnv.points()[i].frame << ":" << fnum(c.gainEnv.points()[i].value);
@@ -1088,6 +1088,7 @@ std::unique_ptr<Session> Session::load(const std::string& path, const InsertFact
       c.name = str(l.kv, "name");
       c.muted = num(l.kv, "muted", 0) != 0;
       c.locked = num(l.kv, "locked", 0) != 0;
+      c.color = static_cast<std::uint8_t>(std::clamp(static_cast<int>(num(l.kv, "color", 0)), 0, 8));
       if (l.kv.count("env")) {
         std::istringstream es(l.kv.at("env"));
         std::string tk;

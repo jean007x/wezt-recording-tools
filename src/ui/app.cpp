@@ -197,7 +197,7 @@ bool App::isImplemented(Command c) const {
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
     case Command::ToolScrubber: case Command::ToolPencil:
     case Command::CycleEditModes: case Command::CycleEditTools:
-    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste: case Command::SpecialPaste: case Command::SpotDialog: case Command::TimeOperations: case Command::PinTrack: case Command::CaptureClip:
+    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste: case Command::SpecialPaste: case Command::SpotDialog: case Command::TimeOperations: case Command::PinTrack: case Command::CaptureClip: case Command::ColorClip:
     case Command::MuteClips: case Command::TrimClipToSelection: case Command::TrimStartToInsertion: case Command::TrimEndToInsertion:
     case Command::InsertSilence: case Command::RepeatSelection: case Command::HealSeparation: case Command::StopRecord: case Command::Pause: case Command::ZoomToggle:
     case Command::OnlinePlayback: case Command::PlayHalfSpeed: case Command::LoopRecord: case Command::ConsolidateClip: case Command::BounceTrack: case Command::CommitTrack:
@@ -381,6 +381,7 @@ void App::execute(Command c) {
     case Command::SpotDialog: openSpot(); break;
     case Command::TimeOperations: showTimeOps_ = true; break;
     case Command::CaptureClip: captureClip(); break;
+    case Command::ColorClip: { const int cur = selectedClipColor(); setClipColor(selTrack_, selClip_, (cur + 1) % 9); break; }
     case Command::PinTrack: if (session_->track(selTrack_)) { togglePinned(selTrack_); setStatus(trackPinned(selTrack_) ? "Track pinned" : "Track unpinned"); } break;
     case Command::SeparateClip: splitSelectedClip(); break;
     case Command::Undo: if (!undoEdit()) setStatus("Nothing to undo"); break;
@@ -465,6 +466,26 @@ void App::splitSelectedClip() {
 }
 
 // Capture Clip: the selected range of the track becomes a clip of its own (cut out of the clips it lies in, which keep what is outside).
+// Clip colour: 0 is the track's own colour, 1..8 the palette.
+int App::selectedClipColor() const {
+  const session::Track* t = session_->track(selTrack_);
+  if (t) for (const auto& c : t->source->playlist()) if (c.id == selClip_) return c.color;
+  return 0;
+}
+
+bool App::setClipColor(TrackId id, int clipId, int color) {
+  session::Track* t = session_->track(id);
+  if (!t || clipId < 0) { setStatus("Select a clip first"); return false; }
+  auto list = t->source->playlist();
+  for (auto& c : list) {
+    if (c.id != clipId) continue;
+    c.color = static_cast<std::uint8_t>(std::clamp(color, 0, 8));
+    t->source->setPlaylist(std::move(list));
+    return true;
+  }
+  return false;
+}
+
 bool App::captureClip() {
   session::Track* t = session_->track(selTrack_);
   if (!t) return false;

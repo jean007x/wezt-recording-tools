@@ -16,6 +16,18 @@ std::string pitchName(int n) {
   return std::string(names[((n % 12) + 12) % 12]) + std::to_string(n / 12 - 1);
 }
 
+MidiClip applyRealTime(const MidiClip& c, const RealTime& rt) {
+  if (!rt.active()) return c;
+  MidiClip r = rt.quantizeGrid > 0.0 ? quantizeMidi(c, rt.quantizeGrid, rt.strength) : c;
+  const double len = std::clamp(rt.lengthPct, 10.0, 400.0) / 100.0;
+  for (Note& n : r.notes) {
+    n.pitch = std::clamp(n.pitch + rt.transpose, 0, 127);
+    n.velocity = std::clamp(n.velocity + rt.velocity, 1, 127);
+    n.length = std::max(0.02, n.length * len);
+  }
+  return r;
+}
+
 MidiClip quantizeMidi(const MidiClip& c, double grid, double strength, double swing, bool lengths) {
   MidiClip r = c;
   if (grid <= 0) return r;

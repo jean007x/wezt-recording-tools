@@ -11,6 +11,7 @@
 #include "dsp/elastic.h"
 #include "instruments/builtin.h"
 #include "ui/app.h"
+#include "ui/style.h"
 
 #define WEZT_PAUSED(body) do { const bool _was = deviceRunning_; if (_was) device_->stop(); body; std::string _e; if (_was) device_->start(&_e); } while (0)
 
@@ -147,6 +148,22 @@ void App::drawClipFxWindow() {
   const bool have = tr && selClip_ >= 0;
   if (!have) ImGui::TextDisabled("Select a clip on the timeline first.");
   else ImGui::TextDisabled("Applies to the selected clip, into a new audio file (the original file stays).");
+  ImGui::Separator();
+  if (have) {   // clip colour swatches: the first one is the track's own colour
+    ImGui::TextDisabled("Colour");
+    const int cur = selectedClipColor();
+    for (int i = 0; i <= 8; ++i) {
+      ImGui::SameLine(0, i == 0 ? 8.f : 3.f);
+      const ImVec2 p = ImGui::GetCursorScreenPos();
+      ImGui::PushID(i);
+      if (ImGui::InvisibleButton("##col", ImVec2(18, 16))) setClipColor(selTrack_, selClip_, i);
+      ImGui::PopID();
+      ImDrawList* dl = ImGui::GetWindowDrawList();
+      dl->AddRectFilled(p, ImVec2(p.x + 18, p.y + 16), style::clipColor(i, style::trackColor(selTrack_)), 3.f);
+      if (i == 0) dl->AddText(ImVec2(p.x + 5, p.y + 1), 0xFF101010, "T");
+      if (i == cur) dl->AddRect(p, ImVec2(p.x + 18, p.y + 16), 0xFFFFFFFF, 3.f, 0, 2.f);
+    }
+  }
   ImGui::Separator();
   auto run = [&](const char* tag, const char* done, const std::function<bool(AudioBuffer&, double, std::string*)>& fn, bool follow = false) {
     std::string err;

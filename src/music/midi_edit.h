@@ -8,6 +8,15 @@
 
 namespace wezt::music {
 
+// Real-Time Properties: changes applied when a part is played (the part's notes stay as they are). Transpose in semitones, velocity added to every
+// note, note lengths as a percentage, and a quantize grid in beats (0 = off) with its strength 0..1.
+struct RealTime {
+  int transpose = 0, velocity = 0;
+  double lengthPct = 100.0, quantizeGrid = 0.0, strength = 1.0;
+  bool active() const { return transpose != 0 || velocity != 0 || lengthPct != 100.0 || quantizeGrid > 0.0; }
+};
+MidiClip applyRealTime(const MidiClip& c, const RealTime& rt);
+
 MidiClip quantizeMidi(const MidiClip& c, double gridBeats, double strength = 1.0, double swing = 0.0, bool quantizeLengths = false);
 MidiClip transposeMidi(const MidiClip& c, int semitones, bool toKey = false, const Key& key = {});   // toKey: snap results to the scale
 MidiClip humanizeMidi(const MidiClip& c, double timingBeats, int velocityRange, std::uint64_t seed);

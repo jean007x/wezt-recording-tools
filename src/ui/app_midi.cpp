@@ -191,13 +191,14 @@ void App::syncLiveMidi() {
     if (part.liveTrack.empty()) continue;
     session::Track* tr = findTrackByName(*session_, part.liveTrack);
     if (!tr) continue;   // the track is gone; the binding waits for a track of that name
-    const std::uint64_t h = hashPart(part.clip, part.instrument, bpm, sr, tr->source);
+    const music::MidiClip played = music::applyRealTime(part.clip, part.rt);   // Real-Time Properties
+    const std::uint64_t h = hashPart(played, part.instrument, bpm, sr, tr->source);
     if (h == part.liveHash) continue;
     part.liveHash = h;
     if (part.liveOwned)
       for (auto& in : tr->inserts)
         if (auto* syn = dynamic_cast<instruments::WeztSynth*>(in.instance)) if (syn->preset() != part.instrument) syn->setPreset(part.instrument);
-    tr->source->setMidiSequence(session::buildMidiSequence(part.clip, bpm, sr));
+    tr->source->setMidiSequence(session::buildMidiSequence(played, bpm, sr));
   }
   if (previewKey_ >= 0 && previewOffAt_ > 0 && ImGui::GetTime() >= previewOffAt_) previewNote(previewKey_, false);
   pollHardwareMidi();
@@ -241,7 +242,7 @@ void App::pumpMidiOut() {
   const double sr = session_->sampleRate();
   if (playing && outWasPlaying_ && pos >= outLastPos_ && static_cast<double>(pos - outLastPos_) < sr) {
     for (std::size_t i = 0; i < midiParts_.size(); ++i) {
-      const auto& clip = midiParts_[i].clip;
+      const music::MidiClip clip = music::applyRealTime(midiParts_[i].clip, midiParts_[i].rt);
       std::uint64_t h = 1469598103934665603ull ^ static_cast<std::uint64_t>(tempo_ * 100.f);
       for (std::size_t k = 0; k < clip.notes.size(); ++k) {
         const auto& n = clip.notes[k];
@@ -427,7 +428,7 @@ bool App::saveMidiParts(const std::string& sessionPath) const {
   std::error_code ec;
   if (midiParts_.empty()) { fs::remove(path, ec); return true; }
   std::vector<music::MidiClip> clips;
-  for (const MidiPart& p : midiParts_) { music::MidiClip c = p.clip; c.name = p.name + "|" + p.instrument + "|" + p.liveTrack + "|" + (p.liveOwned ? "1" : "0"); clips.push_back(std::move(c)); }
+  for (const MidiPart& p : midiParts_) { music::MidiClip c = p.clip; c.name = p.name + "|" + p.instrument + "|" + p.liveTrack + "|" + (p.liveOwned ? "1" : "0") + "|" + std::to_string(p.rt.transpose) + "," + std::to_string(p.rt.velocity) + "," + std::to_string(p.rt.lengthPct) + "," + std::to_string(p.rt.quantizeGrid) + "," + std::to_string(p.rt.strength); clips.push_back(std::move(c)); }
   return music::saveMidiFile(path, clips, tempo_);
 }
 
@@ -442,6 +443,10 @@ bool App::loadMidiParts(const std::string& sessionPath) {
     p.instrument = f.size() > 1 && !f[1].empty() ? f[1] : (c.channel == 9 ? "drums" : "keys");
     if (f.size() > 2) p.liveTrack = f[2];
     p.liveOwned = f.size() > 3 && f[3] == "1";
+    if (f.size() > 4) {   // Real-Time Properties: transpose,velocity,length %,grid,strength
+      int tp = 0, vl = 0; double lp = 100, gr = 0, sg = 1;
+      if (std::sscanf(f[4].c_str(), "%d,%d,%lf,%lf,%lf", &tp, &vl, &lp, &gr, &sg) == 5) { p.rt.transpose = tp; p.rt.velocity = vl; p.rt.lengthPct = lp; p.rt.quantizeGrid = gr; p.rt.strength = sg; }
+    }
     c.name = p.name; p.clip = c;
     midiParts_.push_back(std::move(p));
   }
@@ -519,6 +524,22 @@ void App::drawPianoRollWindow() {
     ImGui::EndCombo();
   }
   if (ImGui::IsItemHovered()) ImGui::SetTooltip("Sends the keyboard's notes and the MIDI parts to a hardware synth.");
+  if (selPart_ >= 0 && ImGui::TreeNode("Real-Time Properties")) {
+    MidiPart& mp = midiParts_[static_cast<std::size_t>(selPart_)];
+    ImGui::TextDisabled("Applied when the part plays; the notes themselves stay as they are.");
+    ImGui::SetNextItemWidth(160); ImGui::SliderInt("transpose", &mp.rt.transpose, -24, 24, "%d semitones");
+    ImGui::SetNextItemWidth(160); ImGui::SliderInt("velocity", &mp.rt.velocity, -60, 60, "%+d");
+    float lp = static_cast<float>(mp.rt.lengthPct);
+    ImGui::SetNextItemWidth(160); if (ImGui::SliderFloat("length", &lp, 10.f, 200.f, "%.0f %%")) mp.rt.lengthPct = lp;
+    static const char* kRtGrids[] = {"off", "1/4", "1/8", "1/16", "1/32"};
+    static const double kRtVals[] = {0.0, 1.0, 0.5, 0.25, 0.125};
+    int gi = 0; for (int i = 0; i < 5; ++i) if (std::fabs(mp.rt.quantizeGrid - kRtVals[i]) < 1e-9) gi = i;
+    ImGui::SetNextItemWidth(100); if (ImGui::Combo("quantize", &gi, kRtGrids, 5)) mp.rt.quantizeGrid = kRtVals[gi];
+    float sg = static_cast<float>(mp.rt.strength);
+    if (mp.rt.quantizeGrid > 0) { ImGui::SameLine(); ImGui::SetNextItemWidth(100); if (ImGui::SliderFloat("strength", &sg, 0.f, 1.f, "%.2f")) mp.rt.strength = sg; }
+    if (ImGui::Button("Reset")) mp.rt = music::RealTime{};
+    ImGui::TreePop();
+  }
   if (selPart_ >= 0) {
     static const char* kVoices[] = {"bass", "tenor", "alto", "soprano"};
     ImGui::SetNextItemWidth(360); ImGui::InputTextWithHint("##lyr", "Lyrics (use - between syllables, e.g. won-der-ful)", &rollLyrics_);

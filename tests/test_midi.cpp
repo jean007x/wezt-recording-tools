@@ -8,6 +8,7 @@
 #include "audio/audio_device.h"
 #include "instruments/sampler.h"
 #include "instruments/wezt_synth.h"
+#include "music/midi_edit.h"
 #include "session/midi_player.h"
 #include "session/session.h"
 
@@ -371,7 +372,28 @@ void testParametersAndState() {
 
 }  // namespace
 
+void testRealTime() {
+  music::MidiClip c;
+  c.notes.push_back({60, 0.1, 1.0, 100});
+  c.notes.push_back({72, 1.0, 0.5, 120});
+  music::RealTime rt;
+  CHECK(!rt.active());
+  CHECK(music::applyRealTime(c, rt).notes[0].pitch == 60);       // inactive: untouched
+  rt.transpose = 5; rt.velocity = 20; rt.lengthPct = 50.0;
+  auto r = music::applyRealTime(c, rt);
+  CHECK(r.notes[0].pitch == 65 && r.notes[1].pitch == 77);
+  CHECK(r.notes[0].velocity == 120 && r.notes[1].velocity == 127);   // clamped at 127
+  CHECK(std::fabs(r.notes[0].length - 0.5) < 1e-9 && std::fabs(r.notes[1].length - 0.25) < 1e-9);
+  rt = music::RealTime{}; rt.quantizeGrid = 0.5;
+  r = music::applyRealTime(c, rt);
+  CHECK(std::fabs(r.notes[0].start - 0.0) < 1e-9);                  // 0.1 snaps to the grid line at 0
+  CHECK(c.notes[0].pitch == 60 && std::fabs(c.notes[0].start - 0.1) < 1e-9);   // the original is not changed
+  rt = music::RealTime{}; rt.transpose = -100;
+  CHECK(music::applyRealTime(c, rt).notes[0].pitch == 0);            // clamped at 0
+}
+
 int main() {
+  testRealTime();
   testSynthSampleAccurate();
   testSynthPitchAndRelease();
   testSynthDrumsAndVelocity();

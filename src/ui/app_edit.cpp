@@ -657,9 +657,10 @@ void App::drawEdit() {
       const float x0 = frameToX(c.start), x1 = frameToX(c.start + c.length);
       if (x1 < a.x || x0 > b.x) continue;
       const bool csel = id == selTrack_ && c.id == selClip_;
+      const ImU32 ctc = st::clipColor(c.color, tc);
       const ImVec2 c0(x0, a.y + 3), c1(x1, b.y - 3);
-      st::vgrad(dl, c0, c1, st::shade(tc, csel ? 0.98f : 0.60f, 255), st::shade(tc, csel ? 0.74f : 0.38f, 255));
-      dl->AddRectFilled(c0, ImVec2(c1.x, c0.y + 15.f), st::shade(tc, csel ? 1.12f : 0.76f, 255));
+      st::vgrad(dl, c0, c1, st::shade(ctc, csel ? 0.98f : 0.60f, 255), st::shade(ctc, csel ? 0.74f : 0.38f, 255));
+      dl->AddRectFilled(c0, ImVec2(c1.x, c0.y + 15.f), st::shade(ctc, csel ? 1.12f : 0.76f, 255));
       dl->AddRect(c0, c1, csel ? col(1.f, 1.f, 1.f, 0.95f) : col(0.f, 0.f, 0.f, 0.85f));
       if (c.audio && showWaves_) {
         const PeakCache& pc = peaksFor(c.audio);
@@ -667,7 +668,7 @@ void App::drawEdit() {
         const float top = c0.y + 16.f, areaH = c1.y - top - 2.f;
         const int lanes = st2 ? 2 : 1;
         const float xs = std::max(x0, a.x), xe = std::min(x1, b.x);
-        const ImU32 ink = csel ? col(0.06f, 0.06f, 0.08f, 0.95f) : st::shade(tc, 1.5f, 235);
+        const ImU32 ink = csel ? col(0.06f, 0.06f, 0.08f, 0.95f) : st::shade(ctc, 1.5f, 235);
         for (int ln = 0; ln < lanes; ++ln) {
           const auto& L = ln == 0 ? pc.lo : pc.lo2; const auto& H = ln == 0 ? pc.hi : pc.hi2;
           const float mid = top + areaH / static_cast<float>(lanes) * (static_cast<float>(ln) + 0.5f), amp = areaH / static_cast<float>(lanes) * 0.5f * waveScale_;

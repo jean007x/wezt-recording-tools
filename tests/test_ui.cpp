@@ -303,7 +303,7 @@ int main() {
           CHECK(w != nullptr);
           if (w) {
             ImGuiIO& io = ImGui::GetIO();
-            const float x = w->Pos.x + 30.f, y0 = w->Pos.y + 160.f;   // below the toolbar rows (the MIDI keyboard chooser has its own row)
+            const float x = w->Pos.x + 30.f, y0 = w->Pos.y + 190.f;   // below the toolbar rows (the MIDI keyboard chooser has its own row)
             io.AddMousePosEvent(x, y0); frames(app, 2);
             CHECK(app.previewingKey() == -1);
             io.AddMouseButtonEvent(0, true); frames(app, 2);
@@ -577,6 +577,71 @@ int main() {
     int cc123 = 0;
     for (const auto& m : log) if (m.type == midi::MidiMessage::Control && m.a == 123) ++cc123;
     CHECK(cc123 == 16);                                  // all-notes-off on every channel
+  }
+  {  // Real-Time Properties are applied to what a part sends out, and are saved with the session
+    struct Out final : midi::IMidiOutput {
+      std::vector<midi::MidiMessage>* log;
+      explicit Out(std::vector<midi::MidiMessage>* l) : log(l) {}
+      bool start(std::string*) override { return true; }
+      void stop() override {}
+      std::string name() const override { return "rt out"; }
+      bool send(const midi::MidiMessage& m) override { log->push_back(m); return true; }
+    };
+    std::vector<midi::MidiMessage> log;
+    App app;
+    frames(app);
+    const int part = app.newMidiPart("RT");
+    app.editMidiPart(part, "notes", [](edit::PianoRoll& r) { r.addNote(60, 0.0, 1.0, 100); });
+    app.setPartRealTime(part, [] { music::RealTime rt; rt.transpose = 7; rt.velocity = -40; return rt; }());
+    app.setMidiOutput(std::make_unique<Out>(&log));
+    auto& tr = app.engine().transport();
+    tr.play(); frames(app);
+    tr.advance(20000); frames(app);
+    bool ok = false;
+    for (const auto& m : log) if (m.type == midi::MidiMessage::NoteOn && m.a == 67 && m.b == 60) ok = true;
+    CHECK(ok);                                            // 60 + 7 semitones, velocity 100 - 40
+    tr.stop(); frames(app);
+    CHECK(app.midiParts()[static_cast<std::size_t>(part)].clip.notes[0].pitch == 60);   // the part itself is unchanged
+    const std::string base = (std::filesystem::temp_directory_path() / "wezt_rt_session").string();
+    CHECK(app.saveMidiParts(base));
+    App app2;
+    frames(app2);
+    CHECK(app2.loadMidiParts(base));
+    bool back = false;
+    for (const auto& p : app2.midiParts()) if (p.name == "RT" && p.rt.transpose == 7 && p.rt.velocity == -40) back = true;
+    CHECK(back);
+    std::filesystem::remove(base + ".midi");
+  }
+  {  // clip colours: set, cycle, saved with the session
+    App app;
+    frames(app);
+    auto& s = app.session();
+    app.execute(Command::AddTrack);
+    const auto t = app.selectedTrack();
+    auto buf = std::make_shared<AudioBuffer>(1, 4800);
+    session::Clip c; c.audio = buf; c.length = 4800; c.name = "col";
+    const int id = s.addClip(t, c);
+    CHECK(!app.setClipColor(t, -1, 3));
+    app.selectClip(t, id);
+    CHECK(app.selectedClipColor() == 0);
+    CHECK(app.setClipColor(t, id, 5) && app.selectedClipColor() == 5);
+    app.execute(Command::ColorClip);                     // 5 -> 6
+    CHECK(app.selectedClipColor() == 6);
+    app.setClipColor(t, id, 8);
+    app.execute(Command::ColorClip);                     // wraps to the track's own colour
+    CHECK(app.selectedClipColor() == 0);
+    app.setClipColor(t, id, 3);
+    app.showClipFx(true);
+    frames(app, 3);                                      // swatches draw
+    const std::string path = (std::filesystem::temp_directory_path() / "wezt_ui_color.wezt").string();
+    std::string err;
+    CHECK(s.save(path, &err));
+    auto loaded = session::Session::load(path, {}, &err);
+    CHECK(loaded != nullptr);
+    int found = -1;
+    if (loaded) for (auto tid : loaded->trackIds()) for (const auto& k : loaded->track(tid)->source->playlist()) if (k.name == "col") found = k.color;
+    CHECK(found == 3);
+    std::filesystem::remove(path);
   }
   {  // Capture Clip: the selected range becomes its own clip, the rest stays
     App app;
