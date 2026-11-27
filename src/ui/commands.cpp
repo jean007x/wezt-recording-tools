@@ -33,7 +33,7 @@ const CommandInfo kCommands[] = {
   {Command::ToolZoomer,"Zoomer"},{Command::ToolTrimmer,"Trimmer"},{Command::ToolSelector,"Selector"},
   {Command::ToolGrabber,"Grabber"},{Command::ToolScrubber,"Scrubber"},{Command::ToolPencil,"Pencil"},
   {Command::ToolSmart,"Smart Tool"},{Command::CycleEditTools,"Cycle Edit Tools"},
-  {Command::Undo,"Undo"},{Command::Redo,"Redo"},{Command::Cut,"Cut"},{Command::Copy,"Copy"},{Command::Paste,"Paste"},{Command::SpecialPaste,"Special Paste"},{Command::SpotDialog,"Spot Dialog"},
+  {Command::Undo,"Undo"},{Command::Redo,"Redo"},{Command::Cut,"Cut"},{Command::Copy,"Copy"},{Command::Paste,"Paste"},{Command::SpecialPaste,"Special Paste"},{Command::SpotDialog,"Spot Dialog"},{Command::TimeOperations,"Time Operations"},{Command::PinTrack,"Pin Track"},{Command::CaptureClip,"Capture Clip"},
   {Command::Clear,"Clear"},{Command::SelectAll,"Select All"},{Command::Duplicate,"Duplicate"},
   {Command::RepeatSelection,"Repeat"},{Command::SeparateClip,"Separate Clip"},{Command::HealSeparation,"Heal Separation"},
   {Command::ConsolidateClip,"Consolidate Clip"},{Command::InsertSilence,"Insert Silence"},{Command::StripSilence,"Strip Silence"},
@@ -187,6 +187,9 @@ Keymap Keymap::protoolsDefaults() {
   b(Key::V, kCtrl, C::Paste);
   b(Key::V, kCtrl | kShift, C::SpecialPaste);
   b(Key::F3, kShift, C::SpotDialog);
+  b(Key::T, kCtrl | kShift, C::TimeOperations);
+  b(Key::P, kCtrl | kShift, C::PinTrack);
+  b(Key::R, kCtrl, C::CaptureClip);
   b(Key::B, kCtrl, C::Clear);
   b(Key::A, kCtrl, C::SelectAll);
   b(Key::D, kCtrl, C::Duplicate);

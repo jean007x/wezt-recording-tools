@@ -284,3 +284,27 @@ void App::drawSpotWindow() {
 }
 
 }  // namespace wezt::ui
+
+namespace wezt::ui {
+
+void App::drawTimeOpsWindow() {
+  ImGui::SetNextWindowSize(ImVec2(360, 200), ImGuiCond_FirstUseEver);
+  if (!ImGui::Begin("Time Operations", &showTimeOps_)) { ImGui::End(); return; }
+  const double sr = session_->sampleRate();
+  ImGui::TextDisabled("Affects every track, its automation and the markers.");
+  ImGui::SetNextItemWidth(120); ImGui::InputDouble("length (s)", &timeOpsLen_, 0.1, 1.0, "%.3f");
+  timeOpsLen_ = std::max(0.0, timeOpsLen_);
+  ImGui::SameLine();
+  if (selEnd_ > selStart_ && ImGui::Button("Use selection")) timeOpsLen_ = static_cast<double>(selEnd_ - selStart_) / sr;
+  const std::int64_t at = selEnd_ > selStart_ ? selStart_ : position();
+  if (ImGui::Button("Insert time", ImVec2(150, 0))) insertTime(at, static_cast<std::int64_t>(std::llround(timeOpsLen_ * sr)));
+  if (ImGui::IsItemHovered()) ImGui::SetTooltip("Opens a gap at the start of the selection (or at the playhead) and moves everything after it later.");
+  ImGui::SameLine();
+  ImGui::BeginDisabled(selEnd_ <= selStart_);
+  if (ImGui::Button("Cut time", ImVec2(150, 0))) cutTime(selStart_, selEnd_);
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Removes the selected range from every track and closes the gap.");
+  ImGui::End();
+}
+
+}  // namespace wezt::ui

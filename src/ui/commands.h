@@ -35,7 +35,7 @@ enum class Command : std::uint16_t {
   ModeShuffle, ModeSlip, ModeSpot, ModeGrid, ModeSnapToGrid, CycleEditModes,
   ToolZoomer, ToolTrimmer, ToolSelector, ToolGrabber, ToolScrubber, ToolPencil, ToolSmart, CycleEditTools,
   // editing
-  Undo, Redo, Cut, Copy, Paste, SpecialPaste, SpotDialog, Clear, SelectAll, Duplicate, RepeatSelection, SeparateClip, HealSeparation,
+  Undo, Redo, Cut, Copy, Paste, SpecialPaste, SpotDialog, TimeOperations, PinTrack, CaptureClip, Clear, SelectAll, Duplicate, RepeatSelection, SeparateClip, HealSeparation,
   ConsolidateClip, InsertSilence, StripSilence, MuteClips, TrimClipToSelection, TrimStartToInsertion,
   TrimEndToInsertion, RestoreSelection, CreateFades, DeleteSelection,
   // windows and zoom

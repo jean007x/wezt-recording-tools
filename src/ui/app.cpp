@@ -197,7 +197,7 @@ bool App::isImplemented(Command c) const {
     case Command::ToolZoomer: case Command::ToolTrimmer: case Command::ToolSelector: case Command::ToolGrabber: case Command::ToolSmart:
     case Command::ToolScrubber: case Command::ToolPencil:
     case Command::CycleEditModes: case Command::CycleEditTools:
-    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste: case Command::SpecialPaste: case Command::SpotDialog:
+    case Command::Clear: case Command::DeleteSelection: case Command::Duplicate: case Command::Cut: case Command::Copy: case Command::Paste: case Command::SpecialPaste: case Command::SpotDialog: case Command::TimeOperations: case Command::PinTrack: case Command::CaptureClip:
     case Command::MuteClips: case Command::TrimClipToSelection: case Command::TrimStartToInsertion: case Command::TrimEndToInsertion:
     case Command::InsertSilence: case Command::RepeatSelection: case Command::HealSeparation: case Command::StopRecord: case Command::Pause: case Command::ZoomToggle:
     case Command::OnlinePlayback: case Command::PlayHalfSpeed: case Command::LoopRecord: case Command::ConsolidateClip: case Command::BounceTrack: case Command::CommitTrack:
@@ -379,6 +379,9 @@ void App::execute(Command c) {
     case Command::Paste: pasteClip(); break;
     case Command::SpecialPaste: showSpecialPaste_ = true; break;
     case Command::SpotDialog: openSpot(); break;
+    case Command::TimeOperations: showTimeOps_ = true; break;
+    case Command::CaptureClip: captureClip(); break;
+    case Command::PinTrack: if (session_->track(selTrack_)) { togglePinned(selTrack_); setStatus(trackPinned(selTrack_) ? "Track pinned" : "Track unpinned"); } break;
     case Command::SeparateClip: splitSelectedClip(); break;
     case Command::Undo: if (!undoEdit()) setStatus("Nothing to undo"); break;
     case Command::Redo: if (!redoEdit()) setStatus("Nothing to redo"); break;
@@ -461,6 +464,32 @@ void App::splitSelectedClip() {
   setStatus("Clip separated");
 }
 
+// Capture Clip: the selected range of the track becomes a clip of its own (cut out of the clips it lies in, which keep what is outside).
+bool App::captureClip() {
+  session::Track* t = session_->track(selTrack_);
+  if (!t) return false;
+  if (selEnd_ <= selStart_) { setStatus("Select a range on the track first, then capture it as a clip"); return false; }
+  const std::int64_t a = selStart_, b = selEnd_;
+  std::vector<Clip> out;
+  int made = -1;
+  for (auto& c : t->source->playlist()) {
+    const std::int64_t cs = c.start, ce = c.start + c.length;
+    if (c.locked || ce <= a || cs >= b) { out.push_back(std::move(c)); continue; }
+    if (cs < a) out.push_back(slicePiece(c, cs, a));
+    Clip mid = slicePiece(c, std::max(cs, a), std::min(ce, b));
+    mid.id = cs < a || ce > b ? t->nextClipId++ : c.id;
+    mid.name = (c.name.empty() ? std::string("clip") : c.name) + " capture";
+    made = mid.id;
+    out.push_back(std::move(mid));
+    if (ce > b) { Clip r = slicePiece(c, b, ce); r.id = t->nextClipId++; out.push_back(std::move(r)); }
+  }
+  if (made < 0) { setStatus("There is no clip in the selected range"); return false; }
+  t->source->setPlaylist(std::move(out));
+  selClip_ = made;
+  setStatus("Captured the range as a clip");
+  return true;
+}
+
 void App::duplicateSelectedClip() {
   session::Track* t = session_->track(selTrack_);
   if (!t || selClip_ < 0) { setStatus("Select a clip first"); return; }
@@ -524,6 +553,38 @@ bool App::pasteSpecial(int repeats, double gapSeconds, bool merge) {
   t->source->setPlaylist(std::move(list));
   selClip_ = last;
   setStatus("Pasted " + std::to_string(repeats) + (repeats == 1 ? " copy" : " copies"));
+  return true;
+}
+
+// Time operations affect the whole session: every track's clips, the track automation lanes and the markers.
+bool App::insertTime(std::int64_t at, std::int64_t len) {
+  if (len <= 0 || at < 0) { setStatus("Choose a length above zero"); return false; }
+  for (auto id : session_->trackIds()) {
+    session::Track* t = session_->track(id);
+    t->source->setPlaylist(session::insertTimeInList(t->nextClipId, t->source->playlist(), at, len));
+    for (auto* lane : {&t->strip->volumeLane(), &t->strip->panLane(), &t->strip->muteLane()}) *lane = session::shiftLane(*lane, at, at + len, true);
+  }
+  for (auto& m : markers_) if (m.frame >= at) m.frame += len;
+  char msg[80];
+  std::snprintf(msg, sizeof msg, "Inserted %.2f s of time", static_cast<double>(len) / session_->sampleRate());
+  setStatus(msg);
+  return true;
+}
+
+bool App::cutTime(std::int64_t a, std::int64_t b) {
+  if (b <= a) { setStatus("Select the range to cut first"); return false; }
+  for (auto id : session_->trackIds()) {
+    session::Track* t = session_->track(id);
+    t->source->setPlaylist(session::cutTimeInList(t->nextClipId, t->source->playlist(), a, b));
+    for (auto* lane : {&t->strip->volumeLane(), &t->strip->panLane(), &t->strip->muteLane()}) *lane = session::shiftLane(*lane, a, b, false);
+  }
+  std::vector<Marker> keep;
+  for (auto m : markers_) { if (m.frame >= a && m.frame < b) continue; if (m.frame >= b) m.frame -= b - a; keep.push_back(m); }
+  markers_ = std::move(keep);
+  selStart_ = selEnd_ = a;
+  char msg[80];
+  std::snprintf(msg, sizeof msg, "Cut %.2f s of time", static_cast<double>(b - a) / session_->sampleRate());
+  setStatus(msg);
   return true;
 }
 
@@ -774,7 +835,7 @@ void App::drawFileDialog() {
           session_->attach(engine_->context());
           peaks_.clear(); objects_.clear();
           selTrack_ = session_->addTrack("Audio 1", true);
-          markers_.clear(); groups_.clear(); hidden_.clear(); firstTrack_ = 0; sessionName_ = "Untitled Session"; midiParts_.clear(); selPart_ = -1; roll_.load({});
+          markers_.clear(); groups_.clear(); hidden_.clear(); pinned_.clear(); firstTrack_ = 0; sessionName_ = "Untitled Session"; midiParts_.clear(); selPart_ = -1; roll_.load({});
           if (device_ && _was) { device_->stop(); std::string e2; device_->open(audio::AudioConfig{}, engine_.get(), &e2); }
         });
         ok = true;
@@ -790,7 +851,7 @@ void App::drawFileDialog() {
             peaks_.clear(); objects_.clear();
             const auto ids = session_->trackIds();
             selTrack_ = ids.empty() ? -1 : ids.front();
-            markers_.clear(); groups_.clear(); hidden_.clear(); firstTrack_ = 0; sessionName_ = nameOf(dialogPath_);
+            markers_.clear(); groups_.clear(); hidden_.clear(); pinned_.clear(); firstTrack_ = 0; sessionName_ = nameOf(dialogPath_);
             if (device_ && _was) { device_->stop(); std::string e2; device_->open(audio::AudioConfig{}, engine_.get(), &e2); }
           });
           ok = true;
@@ -853,6 +914,7 @@ void App::commitRecordedTakes() {
   const bool rec = engine_->transport().recording();
   if (wasRecording_ && !rec) takesPending_ = true;
   wasRecording_ = rec;
+  if (sampRecActive_ && !takesPending_ && !engine_->transport().playing() && !engine_->countingOff() && ++sampRecWait_ > 10) finishSamplerRecording();   // it never started
   if (!takesPending_ || engine_->transport().playing() || engine_->countingOff()) return;
   takesPending_ = false;
   std::string err;
@@ -870,6 +932,7 @@ void App::commitRecordedTakes() {
   }
   if (!err.empty()) setStatus("Recording: " + err);
   else if (added > 0) setStatus(added == 1 ? "Recorded 1 take" : "Recorded " + std::to_string(added) + " takes");
+  if (sampRecActive_) finishSamplerRecording();
 }
 
 void App::frame() {
@@ -948,6 +1011,7 @@ void App::frame() {
   if (showClipFx_) drawClipFxWindow();
   if (showSpecialPaste_) drawSpecialPasteWindow();
   if (showSpot_) drawSpotWindow();
+  if (showTimeOps_) drawTimeOpsWindow();
   if (showClips_) drawClipsWindow();
   if (showVoiceBank_) drawVoiceBankWindow();
   if (showPlugParams_) drawPluginParamsWindow();

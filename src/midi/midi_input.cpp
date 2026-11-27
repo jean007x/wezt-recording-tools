@@ -165,4 +165,58 @@ std::unique_ptr<IMidiInput> openMidiInput(std::size_t i) {
 // WinMM / CoreMIDI backends are separate (midi_input_win.cpp / midi_input_mac.cpp).
 #endif
 
+// ---- MIDI output ----
+int encodeMessage(const MidiMessage& m, std::uint8_t out[3]) {
+  const std::uint8_t ch = m.channel & 0x0F;
+  switch (m.type) {
+    case MidiMessage::NoteOff:         out[0] = 0x80 | ch; out[1] = m.a & 0x7F; out[2] = m.b & 0x7F; return 3;
+    case MidiMessage::NoteOn:          out[0] = 0x90 | ch; out[1] = m.a & 0x7F; out[2] = m.b & 0x7F; return 3;
+    case MidiMessage::PolyPressure:    out[0] = 0xA0 | ch; out[1] = m.a & 0x7F; out[2] = m.b & 0x7F; return 3;
+    case MidiMessage::Control:         out[0] = 0xB0 | ch; out[1] = m.a & 0x7F; out[2] = m.b & 0x7F; return 3;
+    case MidiMessage::Program:         out[0] = 0xC0 | ch; out[1] = m.a & 0x7F; return 2;
+    case MidiMessage::ChannelPressure: out[0] = 0xD0 | ch; out[1] = m.a & 0x7F; return 2;
+    case MidiMessage::PitchBend:       out[0] = 0xE0 | ch; out[1] = m.a & 0x7F; out[2] = m.b & 0x7F; return 3;
+    case MidiMessage::Transport:       return 0;
+  }
+  return 0;
+}
+
+#if defined(__unix__) || defined(__APPLE__)
+namespace {
+class RawMidiOut final : public IMidiOutput {
+ public:
+  explicit RawMidiOut(std::string path) : path_(std::move(path)) {}
+  ~RawMidiOut() override { stop(); }
+  std::string name() const override { return path_; }
+  bool start(std::string* error) override {
+    if (fd_ >= 0) return true;
+    fd_ = ::open(path_.c_str(), O_WRONLY | O_NONBLOCK | O_CLOEXEC);
+    if (fd_ < 0) { if (error) *error = "Cannot open " + path_ + ": " + std::strerror(errno); return false; }
+    return true;
+  }
+  void stop() override { if (fd_ >= 0) { ::close(fd_); fd_ = -1; } }
+  bool send(const MidiMessage& m) override {
+    std::uint8_t b[3];
+    const int n = encodeMessage(m, b);
+    if (n == 0 || fd_ < 0) return false;
+    return ::write(fd_, b, static_cast<std::size_t>(n)) == n;
+  }
+ private:
+  std::string path_;
+  int fd_ = -1;
+};
+}  // namespace
+std::unique_ptr<IMidiOutput> openRawMidiOutput(const std::string& path) { return std::make_unique<RawMidiOut>(path); }
+#else
+std::unique_ptr<IMidiOutput> openRawMidiOutput(const std::string&) { return nullptr; }
+#endif
+
+#if defined(__linux__)
+std::vector<std::string> listMidiOutputs() { return listMidiInputs(); }   // the same raw ports carry both directions
+std::unique_ptr<IMidiOutput> openMidiOutput(std::size_t i) {
+  const auto l = listMidiOutputs();
+  return i < l.size() ? openRawMidiOutput(l[i]) : nullptr;
+}
+#endif
+
 }  // namespace wezt::midi

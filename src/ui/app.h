@@ -19,6 +19,7 @@
 #include "agent/plugin_agent.h"
 #include "edit/undo.h"
 #include "midi/midi_input.h"
+#include "session/midi_player.h"
 #include "music/midi.h"
 #include "audio/audio_device.h"
 #include "engine/engine.h"
@@ -139,16 +140,33 @@ class App {
   // Input monitoring: Auto -> Input -> Off -> Auto.
   void cycleMonitor(session::TrackId t);
   // Special Paste: `repeats` copies in a row, `gapSeconds` apart; merge keeps what is underneath instead of replacing it.
+  // Capture Clip: the selected range on the selected track becomes a clip of its own.
+  bool captureClip();
+  // MIDI output: the keyboard's notes and the MIDI parts go to a hardware device (the output chooser in the Piano Roll). The test hook takes any device.
+  bool openMidiOut(std::size_t index);
+  void closeMidiOut();
+  void setMidiOutput(std::unique_ptr<midi::IMidiOutput> dev);
+  bool hasMidiOutput() const { return hwOut_ != nullptr; }
   bool pasteSpecial(int repeats, double gapSeconds, bool merge);
+  // Time operations across the whole session (all tracks' clips, automation and markers): open a gap of `len` frames at `at`, or remove [a, b) and close it.
+  const std::vector<Marker>& markerList() const { return markers_; }
+  bool insertTime(std::int64_t at, std::int64_t len);
+  bool cutTime(std::int64_t a, std::int64_t b);
   // Spot: moves a clip so it starts exactly at `newStart` (frames).
   bool spotClip(session::TrackId t, int clipId, std::int64_t newStart);
   // Loads the selected timeline clip (the part it plays) as the sampler's sample, replacing the current one.
   bool loadSelectedClipIntoSampler(instruments::Sampler* s);
+  // Records the audio input into the sampler on `samplerTrack`; stop it (the button, or by stopping the transport) and the take becomes the sample.
+  bool startSamplerRecording(session::TrackId samplerTrack);
+  void stopSamplerRecording();
+  bool samplerRecording() const { return sampRecActive_; }
   // Time-stretches the sampler's sample from `sourceBpm` to the project tempo (offline, pitch unchanged). The patch still refers to the original file.
   bool sampleFollowTempo(instruments::Sampler* s, double sourceBpm);
   // Captures a keyboard note into the selected MIDI part while the transport records. False when not recording or no part is selected.
   bool recordMidiNote(bool down, int pitch, int velocity);
   void setTrackHidden(session::TrackId t, bool hidden) { if (hidden) hidden_.insert(t); else hidden_.erase(t); }
+  bool trackPinned(session::TrackId t) const { return pinned_.count(t) != 0; }
+  void togglePinned(session::TrackId t) { if (!pinned_.erase(t)) pinned_.insert(t); }
   bool trackHidden(session::TrackId t) const { return hidden_.count(t) != 0; }
   void nudgeSelectedClip(int direction);              // by the nudge value in the toolbar
   void storeZoomPreset(int slot);                     // 0..4
@@ -279,6 +297,8 @@ class App {
   void copySelectedClip(bool cut);
   void pasteClip();
   void openSpot();
+  void drawTimeOpsWindow();
+  bool showTimeOps_ = false; double timeOpsLen_ = 1.0;
   void drawSpecialPasteWindow();
   void drawSpotWindow();
   bool showSpecialPaste_ = false, showSpot_ = false;
@@ -345,7 +365,7 @@ class App {
   std::vector<Marker> markers_;
   std::vector<TrackGroup> groups_;
   bool allGroupActive_ = false;
-  std::set<session::TrackId> hidden_;
+  std::set<session::TrackId> hidden_, pinned_;
   int firstTrack_ = 0, trackLevel_ = 1, gridIdx_ = 2, nudgeIdx_ = 3;
   float waveScale_ = 1.f, viewWidthPx_ = 1000.f;
   bool showWaves_ = true, showMixFloat_ = false, showVolAuto_ = false; int autoLane_ = 0;   // autoLane_: 0 = volume, 1 = pan   // showVolAuto_: draw/edit volume automation on the timeline
@@ -395,6 +415,14 @@ class App {
   int rollChar_ = 0; std::string rollBank_;   // voice character (0 = none) and voice bank name (empty = synthesizer)
   std::string bankName_ = "my voice", bankStatus_; int bankTrack_[9] = {-1, -1, -1, -1, -1, -1, -1, -1, -1}; int bankCons_[22] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}; bool bankConsent_ = false;
   std::string rollLyrics_; int rollVoice_ = 2; int rollChoir_ = 1; float rollHuman_ = 0.7f, rollRoom_ = 0.15f;
+  std::unique_ptr<midi::IMidiOutput> hwOut_; std::int64_t outLastPos_ = 0; bool outWasPlaying_ = false, outSounding_ = false;
+  struct OutSeq { std::shared_ptr<const session::MidiSequence> seq; std::uint64_t hash = 0; };
+  std::vector<OutSeq> outSeq_;
+  void pumpMidiOut();
+  void finishSamplerRecording();
+  int sampRecWait_ = 0;
+  bool sampRecActive_ = false; session::TrackId sampRecTrack_ = 0, sampRecOwner_ = 0; std::vector<session::TrackId> sampRecAside_;
+  void midiOutAllOff();
   std::unique_ptr<midi::IMidiInput> hwMidi_; std::string hwTrack_; bool hwTried_ = false; double hwActivityAt_ = -1.0;
   int previewKey_ = -1; double previewOffAt_ = -1; std::string previewTrack_; float lastLiveTempo_ = 0.f;
   bool addAudioTrack(const std::string& name, const AudioBuffer& audio);

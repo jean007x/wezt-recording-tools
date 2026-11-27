@@ -201,6 +201,74 @@ void App::syncLiveMidi() {
   }
   if (previewKey_ >= 0 && previewOffAt_ > 0 && ImGui::GetTime() >= previewOffAt_) previewNote(previewKey_, false);
   pollHardwareMidi();
+  pumpMidiOut();
+}
+
+bool App::openMidiOut(std::size_t index) {
+  closeMidiOut();
+  auto dev = midi::openMidiOutput(index);
+  std::string err;
+  if (!dev || !dev->start(&err)) { setStatus(err.empty() ? "No MIDI output found" : err); return false; }
+  hwOut_ = std::move(dev);
+  setStatus("MIDI output \"" + hwOut_->name() + "\": keyboard notes and the MIDI parts are sent to it");
+  return true;
+}
+
+void App::setMidiOutput(std::unique_ptr<midi::IMidiOutput> dev) {
+  closeMidiOut();
+  hwOut_ = std::move(dev);
+  outWasPlaying_ = false;
+}
+
+void App::closeMidiOut() {
+  if (hwOut_) { midiOutAllOff(); hwOut_->stop(); }
+  hwOut_.reset();
+}
+
+void App::midiOutAllOff() {
+  if (!hwOut_ || !outSounding_) return;
+  for (std::uint8_t ch = 0; ch < 16; ++ch) { midi::MidiMessage m; m.type = midi::MidiMessage::Control; m.channel = ch; m.a = 123; m.b = 0; hwOut_->send(m); }
+  outSounding_ = false;
+}
+
+// Sends the MIDI parts to the output device in step with the transport: what lies between the last frame's position and this one.
+// (Timing is that of the UI frame, a few milliseconds; the sounds made inside the program are sample-accurate.)
+void App::pumpMidiOut() {
+  if (!hwOut_) return;
+  auto& tr = engine_->transport();
+  const bool playing = tr.playing();
+  const std::int64_t pos = position();
+  const double sr = session_->sampleRate();
+  if (playing && outWasPlaying_ && pos >= outLastPos_ && static_cast<double>(pos - outLastPos_) < sr) {
+    for (std::size_t i = 0; i < midiParts_.size(); ++i) {
+      const auto& clip = midiParts_[i].clip;
+      std::uint64_t h = 1469598103934665603ull ^ static_cast<std::uint64_t>(tempo_ * 100.f);
+      for (std::size_t k = 0; k < clip.notes.size(); ++k) {
+        const auto& n = clip.notes[k];
+        h = (h ^ static_cast<std::uint64_t>(n.pitch * 131 + static_cast<int>(n.start * 1000.0) * 7 + static_cast<int>(n.length * 1000.0) * 13 + n.velocity)) * 1099511628211ull;
+      }
+      if (outSeq_.size() <= i) outSeq_.resize(i + 1);
+      if (!outSeq_[i].seq || outSeq_[i].hash != h) { outSeq_[i].seq = session::buildMidiSequence(clip, static_cast<double>(tempo_), sr); outSeq_[i].hash = h; }
+      MidiEvent evs[kMaxMidiPerBlock];
+      const std::size_t n = session::collectMidi(*outSeq_[i].seq, outLastPos_, pos, evs, kMaxMidiPerBlock);
+      for (std::size_t k = 0; k < n; ++k) {
+        midi::MidiMessage m;
+        m.channel = evs[k].channel;
+        switch (evs[k].type) {
+          case MidiEvent::NoteOn: m.type = midi::MidiMessage::NoteOn; m.a = static_cast<std::uint8_t>(evs[k].a); m.b = static_cast<std::uint8_t>(evs[k].b); outSounding_ = true; break;
+          case MidiEvent::NoteOff: m.type = midi::MidiMessage::NoteOff; m.a = static_cast<std::uint8_t>(evs[k].a); m.b = static_cast<std::uint8_t>(evs[k].b); break;
+          case MidiEvent::Controller: m.type = midi::MidiMessage::Control; m.a = static_cast<std::uint8_t>(evs[k].a); m.b = static_cast<std::uint8_t>(evs[k].b); break;
+          case MidiEvent::PitchBend: m.type = midi::MidiMessage::PitchBend; m.a = static_cast<std::uint8_t>(evs[k].a & 0x7F); m.b = static_cast<std::uint8_t>((evs[k].a >> 7) & 0x7F); break;
+          case MidiEvent::AllNotesOff: m.type = midi::MidiMessage::Control; m.a = 123; m.b = 0; break;
+        }
+        hwOut_->send(m);
+      }
+    }
+  } else if (outWasPlaying_ && (!playing || pos < outLastPos_ || static_cast<double>(pos - outLastPos_) >= sr)) {
+    midiOutAllOff();   // stopped or jumped: do not leave notes hanging on the device
+  }
+  outLastPos_ = pos;
+  outWasPlaying_ = playing;
 }
 
 bool App::openHardwareMidi(std::size_t index) {
@@ -284,6 +352,7 @@ void App::pollHardwareMidi() {
       }
       continue;
     }
+    if (hwOut_ && m.type != midi::MidiMessage::Transport) { hwOut_->send(m); if (m.type == midi::MidiMessage::NoteOn) outSounding_ = true; }   // MIDI thru
     if (m.type == midi::MidiMessage::NoteOn) recordMidiNote(true, m.a, m.b);
     else if (m.type == midi::MidiMessage::NoteOff) recordMidiNote(false, m.a, 0);
     if (m.type == midi::MidiMessage::NoteOn) {
@@ -440,6 +509,16 @@ void App::drawPianoRollWindow() {
     if (devices.empty()) ImGui::TextDisabled("no MIDI input devices found");
     ImGui::EndCombo();
   }
+  ImGui::SameLine(); ImGui::SetNextItemWidth(220);
+  if (ImGui::BeginCombo("##midiout", hwOut_ ? hwOut_->name().c_str() : "MIDI out: none")) {   // the output chooser
+    if (ImGui::Selectable("none", !hwOut_)) closeMidiOut();
+    const auto outs = midi::listMidiOutputs();
+    for (std::size_t i = 0; i < outs.size(); ++i)
+      if (ImGui::Selectable((outs[i] + "##out" + std::to_string(i)).c_str(), hwOut_ && hwOut_->name() == outs[i])) openMidiOut(i);
+    if (outs.empty()) ImGui::TextDisabled("no MIDI output devices found");
+    ImGui::EndCombo();
+  }
+  if (ImGui::IsItemHovered()) ImGui::SetTooltip("Sends the keyboard's notes and the MIDI parts to a hardware synth.");
   if (selPart_ >= 0) {
     static const char* kVoices[] = {"bass", "tenor", "alto", "soprano"};
     ImGui::SetNextItemWidth(360); ImGui::InputTextWithHint("##lyr", "Lyrics (use - between syllables, e.g. won-der-ful)", &rollLyrics_);

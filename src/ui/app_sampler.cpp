@@ -12,6 +12,8 @@
 #include "ui/app.h"
 #include "ui/style.h"
 
+#define WEZT_PAUSED(body) do { const bool _was = deviceRunning_; if (_was) device_->stop(); body; std::string _e; if (_was) device_->start(&_e); } while (0)
+
 namespace wezt::ui {
 using instruments::FilterType;
 using instruments::LfoShape;
@@ -106,6 +108,57 @@ void App::samplerSetMode(Sampler* s, SamplerMode m) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Records the audio input straight into the sampler: a throwaway track takes the audio (the other armed tracks are put aside for the
+// moment), and when recording stops the take becomes the sample and the throwaway track is removed.
+bool App::startSamplerRecording(session::TrackId samplerTrack) {
+  if (sampRecActive_) { setStatus("Already recording into the sampler"); return false; }
+  if (!samplerOn(samplerTrack)) { setStatus("Select a sampler track first"); return false; }
+  const session::TrackId id = session_->addTrack("Sampler rec", true, {0});
+  session::Track* t = session_->track(id);
+  if (!t) return false;
+  sampRecAside_.clear();
+  for (auto other : session_->trackIds()) {
+    session::Track* o = session_->track(other);
+    if (other != id && o->source->armed()) { sampRecAside_.push_back(other); o->source->arm(false); }
+  }
+  t->source->arm(true);
+  sampRecTrack_ = id; sampRecOwner_ = samplerTrack; sampRecActive_ = true; sampRecWait_ = 0;
+  if (engine_->countingOff()) engine_->cancelCountOff();
+  engine_->transport().locate(0);
+  engine_->startWithCountOff(true);
+  setStatus("Recording into the sampler: press the button again to stop");
+  return true;
+}
+
+void App::stopSamplerRecording() {
+  if (!sampRecActive_) return;
+  if (engine_->countingOff()) engine_->cancelCountOff();
+  engine_->transport().stop();
+}
+
+// Called once the take is on the throwaway track: load it, then put everything back as it was.
+void App::finishSamplerRecording() {
+  if (!sampRecActive_) return;
+  sampRecActive_ = false;
+  session::Track* t = session_->track(sampRecTrack_);
+  int clipId = -1;
+  if (t) for (const auto& c : t->source->playlist()) if (c.audio) clipId = c.id;
+  instruments::Sampler* sm = samplerOn(sampRecOwner_);
+  bool ok = false;
+  if (t && clipId >= 0 && sm) {
+    selTrack_ = sampRecTrack_; selClip_ = clipId;
+    ok = loadSelectedClipIntoSampler(sm);
+  }
+  const std::string keep = status_;
+  WEZT_PAUSED(session_->removeTrack(sampRecTrack_));
+  for (auto id : sampRecAside_) if (session::Track* o = session_->track(id)) o->source->arm(true);
+  sampRecAside_.clear();
+  selTrack_ = sampRecOwner_; selClip_ = -1;
+  if (!ok) setStatus("Nothing was recorded into the sampler");
+  else setStatus(keep);
+  sampRecTrack_ = 0;
+}
+
 bool App::sampleFollowTempo(Sampler* s, double sourceBpm) {
   if (!s || s->zones().empty()) { setStatus("Load a sample first"); return false; }
   Zone z = s->zones()[0];
@@ -251,6 +304,9 @@ void App::drawSamplerWindow() {
       if (st::chip(names[i], p.mode == modes[i], gold, ImVec2(86, 28), goldText)) { samplerSetMode(s, modes[i]); p = s->params(); }
     }
     ImGui::SameLine(0, 10);
+    if (st::chip(sampRecActive_ ? "STOP REC" : "RECORD", sampRecActive_, 0xFF3A3AD0, ImVec2(92, 28))) { if (sampRecActive_) stopSamplerRecording(); else startSamplerRecording(selTrack_); }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Records the audio input straight into the sampler as its sample.");
+    ImGui::SameLine(0, 4);
     if (st::chip("FROM CLIP", false, gold, ImVec2(92, 28))) loadSelectedClipIntoSampler(s);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Loads the clip selected on the timeline as the sample (replaces the current one).\nRecord on a track first, then select the take.");
     const std::string fname = zones.empty() ? "No sample loaded" : baseName(zones[0].file.empty() ? std::string("(sliced sample)") : zones[0].file);

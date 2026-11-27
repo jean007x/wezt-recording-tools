@@ -56,4 +56,47 @@ inline std::vector<Clip> removeRange(int& nextClipId, std::vector<Clip> list, st
 }
 
 
+// Time operations: open a gap of `len` frames at `at`. A clip that straddles `at` is split; locked clips move with everything else.
+inline std::vector<Clip> insertTimeInList(int& nextClipId, std::vector<Clip> list, std::int64_t at, std::int64_t len) {
+  std::vector<Clip> out;
+  for (auto& c : list) {
+    const std::int64_t cs = c.start, ce = c.start + c.length;
+    if (ce <= at) { out.push_back(std::move(c)); continue; }
+    if (cs >= at) { c.start += len; out.push_back(std::move(c)); continue; }
+    Clip l = slicePiece(c, cs, at);
+    Clip r = slicePiece(c, at, ce);
+    r.id = nextClipId++;
+    r.start += len;
+    out.push_back(std::move(l)); out.push_back(std::move(r));
+  }
+  return out;
+}
+
+// Time operations: remove [a, b) from every clip (locked ones too) and close the gap.
+inline std::vector<Clip> cutTimeInList(int& nextClipId, std::vector<Clip> list, std::int64_t a, std::int64_t b) {
+  const std::int64_t len = b - a;
+  std::vector<Clip> out;
+  for (auto& c : list) {
+    const std::int64_t cs = c.start, ce = c.start + c.length;
+    if (ce <= a) { out.push_back(std::move(c)); continue; }
+    if (cs >= b) { c.start -= len; out.push_back(std::move(c)); continue; }
+    if (cs < a) { Clip l = slicePiece(c, cs, a); out.push_back(std::move(l)); }
+    if (ce > b) { Clip r = slicePiece(c, b, ce); r.id = nextClipId++; r.start -= len; out.push_back(std::move(r)); }
+  }
+  return out;
+}
+
+// The same for an automation lane: points at or after `at` move by `len` (insert), or points inside [a, b) go and later ones move back (cut).
+inline AutomationLane shiftLane(const AutomationLane& lane, std::int64_t a, std::int64_t b, bool insert) {
+  AutomationLane out = lane;
+  out.clear();
+  const std::int64_t len = b - a;
+  for (const auto& p : lane.points()) {
+    if (insert) out.add(p.frame >= a ? p.frame + len : p.frame, p.value);
+    else if (p.frame < a) out.add(p.frame, p.value);
+    else if (p.frame >= b) out.add(p.frame - len, p.value);
+  }
+  return out;
+}
+
 }  // namespace wezt::session

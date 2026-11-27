@@ -511,6 +511,131 @@ int main() {
     app.execute(Command::Paste);
     CHECK(s.track(app.selectedTrack())->source->playlist().size() == 3);
   }
+  {  // recording straight into the sampler: the take becomes the sample and the throwaway track goes away
+    App app;
+    frames(app);
+    app.loadDemo();
+    frames(app, 2);
+    auto& s = app.session();
+    const auto dir = std::filesystem::temp_directory_path() / "wezt_ui_samprec";
+    std::filesystem::remove_all(dir);
+    s.setRecordFolder((dir / "Audio Files").string());
+    app.selectTrack(s.trackIds().back());            // the demo's last track holds the sampler
+    const auto owner = app.selectedTrack();
+    instruments::Sampler* sm = app.samplerOn(owner);
+    CHECK(sm != nullptr);
+    const std::size_t tracks = s.trackIds().size();
+    audio::AudioConfig cfg; cfg.sampleRate = 48000; cfg.bufferFrames = 128; cfg.inChannels = 2; cfg.outChannels = 2;
+    app.engine().deviceAboutToStart(cfg);
+    CHECK(sm && app.startSamplerRecording(owner));
+    CHECK(app.samplerRecording() && s.trackIds().size() == tracks + 1);
+    std::vector<float> in0(128, 0.3f), in1(128, 0.3f), o0(128), o1(128);
+    const float* ins[2] = {in0.data(), in1.data()};
+    float* outs[2] = {o0.data(), o1.data()};
+    for (int i = 0; i < 30; ++i) app.engine().process(ins, outs, 128);
+    frames(app, 2);
+    app.stopSamplerRecording();
+    app.engine().process(ins, outs, 128);
+    frames(app, 4);
+    CHECK(!app.samplerRecording() && s.trackIds().size() == tracks);
+    CHECK(sm && sm->zones().size() == 1 && sm->zones()[0].audio && sm->zones()[0].audio->frames > 2000);
+    std::filesystem::remove_all(dir);
+  }
+  {  // MIDI output: a part's notes reach the device in step with the transport, and a stop silences it
+    struct Out final : midi::IMidiOutput {
+      std::vector<midi::MidiMessage>* log;
+      explicit Out(std::vector<midi::MidiMessage>* l) : log(l) {}
+      bool start(std::string*) override { return true; }
+      void stop() override {}
+      std::string name() const override { return "test out"; }
+      bool send(const midi::MidiMessage& m) override { log->push_back(m); return true; }
+    };
+    std::vector<midi::MidiMessage> log;
+    App app;
+    frames(app);
+    const int part = app.newMidiPart("Out");
+    app.selectMidiPart(part);
+    app.editMidiPart(part, "notes", [](edit::PianoRoll& r) { r.addNote(60, 0.0, 1.0, 100); r.addNote(64, 2.0, 1.0, 90); });
+    app.setMidiOutput(std::make_unique<Out>(&log));
+    CHECK(app.hasMidiOutput());
+    auto& tr = app.engine().transport();
+    tr.play();
+    frames(app);                                         // playing at 0: nothing is behind us yet
+    tr.advance(30000);                                   // 0.625 s: note 60 starts (beat 0) and ends at beat 1 = 0.5 s
+    frames(app);
+    int ons = 0, offs = 0;
+    for (const auto& m : log) { if (m.type == midi::MidiMessage::NoteOn && m.a == 60 && m.b == 100) ++ons; if (m.type == midi::MidiMessage::NoteOff && m.a == 60) ++offs; }
+    CHECK(ons == 1 && offs == 1);
+    tr.advance(40000);                                   // note 64 starts at beat 2 = 1 s
+    frames(app);
+    bool got64 = false;
+    for (const auto& m : log) if (m.type == midi::MidiMessage::NoteOn && m.a == 64) got64 = true;
+    CHECK(got64);
+    log.clear();
+    tr.stop();
+    frames(app);
+    int cc123 = 0;
+    for (const auto& m : log) if (m.type == midi::MidiMessage::Control && m.a == 123) ++cc123;
+    CHECK(cc123 == 16);                                  // all-notes-off on every channel
+  }
+  {  // Capture Clip: the selected range becomes its own clip, the rest stays
+    App app;
+    frames(app);
+    auto& s = app.session();
+    app.execute(Command::AddTrack);
+    const auto t = app.selectedTrack();
+    auto buf = std::make_shared<AudioBuffer>(1, 10000);
+    session::Clip c; c.audio = buf; c.start = 1000; c.length = 10000; c.name = "take";
+    s.addClip(t, c);
+    CHECK(!app.captureClip());                              // no range yet
+    app.setRange(3000, 6000);
+    CHECK(app.captureClip());
+    int caps = 0, pieces = 0;
+    for (const auto& k : s.track(t)->source->playlist()) {
+      ++pieces;
+      if (k.name == "take capture" && k.start == 3000 && k.length == 3000 && k.offset == 2000) ++caps;
+    }
+    CHECK(caps == 1 && pieces == 3);
+  }
+  {  // time operations: insert and cut time across tracks, automation and markers
+    App app;
+    frames(app);
+    auto& s = app.session();
+    app.execute(Command::AddTrack);
+    app.execute(Command::AddTrack);
+    const auto ids = s.trackIds();
+    const auto ta = ids[ids.size() - 2], tb = ids.back();
+    auto buf = std::make_shared<AudioBuffer>(1, 10000);
+    for (auto t : {ta, tb}) {
+      session::Clip c; c.audio = buf; c.length = 10000; c.name = "x";
+      c.start = 0; s.addClip(t, c);
+      c.start = 20000; s.addClip(t, c);
+      s.track(t)->strip->volumeLane().add(25000, -6.f);
+    }
+    app.addMarker(25000);
+    CHECK(app.insertTime(5000, 2000));
+    for (auto t : {ta, tb}) {
+      std::vector<std::pair<std::int64_t, std::int64_t>> v;
+      for (const auto& k : s.track(t)->source->playlist()) v.push_back({k.start, k.length});
+      std::sort(v.begin(), v.end());
+      const bool shapeOk = v.size() == 3 && v[0].first == 0 && v[0].second == 5000 && v[1].first == 7000 && v[1].second == 5000 && v[2].first == 22000 && v[2].second == 10000;
+      CHECK(shapeOk);
+      CHECK(s.track(t)->strip->volumeLane().points().size() == 1 && s.track(t)->strip->volumeLane().points()[0].frame == 27000);
+    }
+    bool mk = false;
+    for (const auto& m : app.markerList()) if (m.frame == 27000) mk = true;
+    CHECK(mk);
+    CHECK(app.cutTime(5000, 7000));                          // back to the start
+    for (auto t : {ta, tb}) {
+      std::int64_t total = 0, lastEnd = 0;
+      for (const auto& k : s.track(t)->source->playlist()) { total += k.length; lastEnd = std::max(lastEnd, k.start + k.length); }
+      CHECK(total == 20000 && lastEnd == 30000);
+      CHECK(s.track(t)->strip->volumeLane().points()[0].frame == 25000);
+    }
+    CHECK(!app.cutTime(10, 10) && !app.insertTime(0, 0));
+    app.execute(Command::TimeOperations);
+    frames(app, 2);
+  }
   {  // Special Paste (repeats, gap, merge) and Spot
     App app;
     frames(app);
@@ -762,6 +887,27 @@ int main() {
       io.AddMouseButtonEvent(0, false); frames(app, 3);
       CHECK(app.timelineGeometry().framesPerPixel < fppBefore);
     }
+    io.AddMousePosEvent(0, 0); frames(app, 1);
+  }
+  {  // a pinned track is drawn first, whatever its place in the session, and clicking the first lane selects it
+    App app;
+    frames(app);
+    auto& io = ImGui::GetIO();
+    auto& s = app.session();
+    for (int i = 0; i < 10; ++i) s.addTrack("extra", true, {0});
+    const auto last = s.trackIds().back();
+    app.selectTrack(s.trackIds().front());
+    app.execute(Command::PinTrack);                      // pins the selected (first) track
+    CHECK(app.trackPinned(s.trackIds().front()));
+    app.togglePinned(s.trackIds().front());
+    app.togglePinned(last);
+    CHECK(app.trackPinned(last));
+    frames(app, 3);
+    const auto g = app.timelineGeometry();
+    io.AddMousePosEvent(g.x0 + 60.f, g.lanesTop + g.laneH * 0.5f); frames(app, 2);
+    io.AddMouseButtonEvent(0, true); frames(app, 2);
+    io.AddMouseButtonEvent(0, false); frames(app, 3);
+    CHECK(app.selectedTrack() == last);                  // the pinned track sits in the first lane
     io.AddMousePosEvent(0, 0); frames(app, 1);
   }
   {  // recording in the app: once the transport has stopped the take is on the track as a clip, with a status line and an undo step

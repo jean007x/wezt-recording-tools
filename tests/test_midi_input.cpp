@@ -101,6 +101,37 @@ int main() {
     auto bad = openRawMidi("/nonexistent/midi");
     CHECK(bad && !bad->start(&err) && !err.empty());
   }
+  {  // output: what the output sends, the input reads back
+    const std::string path = "/tmp/wezt_midi_out_fifo_" + std::to_string(::getpid());
+    ::unlink(path.c_str());
+    CHECK(::mkfifo(path.c_str(), 0600) == 0);
+    auto in = openRawMidi(path);
+    std::string err;
+    CHECK(in && in->start(&err));
+    auto out = openRawMidiOutput(path);
+    CHECK(out && out->start(&err));
+    MidiMessage on; on.type = MidiMessage::NoteOn; on.channel = 2; on.a = 64; on.b = 90;
+    MidiMessage cc; cc.type = MidiMessage::Control; cc.channel = 2; cc.a = 7; cc.b = 100;
+    MidiMessage pb; pb.type = MidiMessage::PitchBend; pb.channel = 2; pb.a = 0; pb.b = 96;   // +4096
+    MidiMessage pr; pr.type = MidiMessage::Program; pr.channel = 2; pr.a = 5;
+    CHECK(out->send(on) && out->send(cc) && out->send(pb) && out->send(pr));
+    std::vector<MidiMessage> got;
+    for (int i = 0; i < 100 && got.size() < 4; ++i) { MidiMessage m; while (in->queue().pop(m)) got.push_back(m); std::this_thread::sleep_for(std::chrono::milliseconds(20)); }
+    CHECK(got.size() == 4);
+    if (got.size() == 4) {
+      CHECK(got[0].type == MidiMessage::NoteOn && got[0].channel == 2 && got[0].a == 64 && got[0].b == 90);
+      CHECK(got[1].type == MidiMessage::Control && got[1].a == 7 && got[1].b == 100);
+      CHECK(got[2].type == MidiMessage::PitchBend && got[2].pitchBendValue() == 4096);
+      CHECK(got[3].type == MidiMessage::Program && got[3].a == 5 && got[3].channel == 2);
+    }
+    std::uint8_t bytes3[3];
+    MidiMessage tr; tr.type = MidiMessage::Transport;
+    CHECK(encodeMessage(tr, bytes3) == 0 && encodeMessage(pr, bytes3) == 2 && encodeMessage(on, bytes3) == 3 && bytes3[0] == 0x92);
+    out->stop(); in->stop();
+    ::unlink(path.c_str());
+    auto badOut = openRawMidiOutput("/nonexistent/midi");
+    CHECK(badOut && !badOut->start(&err) && !err.empty());
+  }
 #endif
   std::printf(failures ? "midi_input: %d FAILED\n" : "midi_input: all passed\n", failures);
   return failures ? 1 : 0;

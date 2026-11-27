@@ -34,7 +34,7 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 | Memory Locations (numbered, ranges, comments, zoom preset, track visibility, pre/post-roll), saved | done; window in the UI |
 | Clips list window, playlists (alternate takes) and comping | done (see "v0.7 additions") |
 | Special Paste (Ctrl+Shift+V: copies, gap, merge) | done |
-| Capture Clip, time operations (insert/cut time, tempo operations) | not built |
+| Capture Clip (Ctrl+R), time operations: Insert Time and Cut Time over all tracks, automation and markers (Ctrl+Shift+T) | done; the project has one tempo, so there are no tempo-map operations |
 | Elastic Audio (polyphonic, rhythmic, monophonic, varispeed), Beat Detective | done (see "v0.7 additions") |
 | Melodyne-style note-level pitch editing, ARA | not built |
 | MIDI Editor, Score Editor | built as the piano roll and score windows (see the rows below) |
@@ -50,7 +50,7 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 | VCA masters | done (summed dB, saved/loaded); no strip in the Mix window yet |
 | Aux inputs | covered by buses; Routing Folders, Master Fader, Video tracks as separate track types not built |
 | Commit / Freeze | offline bounce exists; per-track commit not built |
-| Track Pin, Playlist colour coding | Track Pin not built |
+| Track Pin, Playlist colour coding | Track Pin done (P on the header, Ctrl+Shift+P: pinned tracks stay at the top while the rest scroll); playlist colours not built |
 | LUFS, peak meters | LUFS in analysis and immersive meter; VU / K-System not built |
 
 ## Other windows and systems
@@ -116,5 +116,5 @@ the window on a real display, real audio hardware, a real MIDI keyboard, commerc
 - **Real-world checks still missing:** the window on a real display, real audio hardware, a real MIDI keyboard, commercial (third-party) plug-ins, a real Claude Desktop session, and a real 32-bit helper.
 - **Packaging:** unsigned archives are built by `release.yml`; there are no installers, and no code signing or macOS notarization (those need certificates).
 - **From the reference document:** Real-Time Properties, MPE, Routing Folders, per-track Commit/Freeze,
-  Track Pin, Extensions API, Speech-to-Text, Project Browser, Workspace, Video, AAF/OMF,
+  Extensions API, Speech-to-Text, Project Browser, Workspace, Video, AAF/OMF,
   AU and VST2 loading, AAX/RTAS/TDM (not hostable).

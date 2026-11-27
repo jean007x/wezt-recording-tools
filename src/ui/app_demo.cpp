@@ -137,7 +137,7 @@ void App::loadDemo() {
   objects_[k] = {-0.8f, 0.4f, 0.1f, 0.f};
   zoomTo(0, static_cast<std::int64_t>(7.0 * rate));
   sessionName_ = "Sunset at the Border";
-  markers_.clear(); groups_.clear(); hidden_.clear(); firstTrack_ = 0;
+  markers_.clear(); groups_.clear(); hidden_.clear(); pinned_.clear(); firstTrack_ = 0;
   addMarker(0, "intro");
   addMarker(static_cast<std::int64_t>(2.0 * rate), "verse");
   addMarker(static_cast<std::int64_t>(4.5 * rate), "chorus");

@@ -315,7 +315,7 @@ void App::drawTransport() {
     bgl->AddRectFilled(ImVec2(p.x, p.y + 4), ImVec2(p.x + 12, p.y + 12), inLit ? col(0.35f, 0.9f, 0.4f) : col(0.16f, 0.17f, 0.19f), 2.f);
     bgl->AddRectFilled(ImVec2(p.x, p.y + 22), ImVec2(p.x + 12, p.y + 30), col(0.16f, 0.17f, 0.19f), 2.f);
     ImGui::Dummy(ImVec2(14, 30));
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip(hwMidi_ ? "MIDI In lights on keyboard messages. MIDI Out is not built." : "No MIDI keyboard connected (choose one in the Piano Roll). MIDI Out is not built.");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip(hwMidi_ ? "MIDI In lights on keyboard messages. Choose a MIDI output in the Piano Roll to send notes to hardware." : "No MIDI keyboard connected (choose one in the Piano Roll).");
   }
   ImGui::SameLine(0, 14);
   ImGui::BeginGroup();
@@ -493,7 +493,9 @@ void App::drawEdit() {
   static const float levelH[3] = {54.f, 98.f, 140.f};
   const float laneH = levelH[std::clamp(trackLevel_, 0, 2)];
   std::vector<TrackId> vis;
-  for (TrackId id : session_->trackIds()) if (!trackHidden(id)) vis.push_back(id);
+  for (TrackId id : session_->trackIds()) if (!trackHidden(id) && trackPinned(id)) vis.push_back(id);   // pinned tracks come first and stay in view
+  const int pinnedRows = static_cast<int>(vis.size());
+  for (TrackId id : session_->trackIds()) if (!trackHidden(id) && !trackPinned(id)) vis.push_back(id);
   const double rate = session_->sampleRate();
   const float fpp = framesPerPixel_;
   const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -506,9 +508,10 @@ void App::drawEdit() {
   auto frameToX = [&](std::int64_t f) { return timelineX + static_cast<float>((static_cast<double>(f) - scrollFrames_) / fpp); };
   auto xToFrame = [&](float x) { return static_cast<std::int64_t>(scrollFrames_ + static_cast<double>(x - timelineX) * fpp); };
   const int rowsVisible = std::max(1, static_cast<int>((avail.y - rulerH) / laneH));
-  firstTrack_ = std::clamp(firstTrack_, 0, std::max(0, static_cast<int>(vis.size()) - rowsVisible));
+  const int scrollable = std::max(0, static_cast<int>(vis.size()) - pinnedRows), scrollRows = std::max(1, rowsVisible - pinnedRows);
+  firstTrack_ = std::clamp(firstTrack_, 0, std::max(0, scrollable - scrollRows));
   ImGuiIO& io0 = ImGui::GetIO();
-  if (areaHovered && io0.MouseWheel != 0.f && !io0.KeyCtrl && !io0.KeyShift) firstTrack_ = std::clamp(firstTrack_ - static_cast<int>(io0.MouseWheel > 0 ? 1 : -1), 0, std::max(0, static_cast<int>(vis.size()) - rowsVisible));
+  if (areaHovered && io0.MouseWheel != 0.f && !io0.KeyCtrl && !io0.KeyShift) firstTrack_ = std::clamp(firstTrack_ - static_cast<int>(io0.MouseWheel > 0 ? 1 : -1), 0, std::max(0, scrollable - scrollRows));
 
   // follow the playhead while playing
   if (engine_->transport().playing() && followPlayhead_) {
@@ -524,8 +527,11 @@ void App::drawEdit() {
   geo_ = TimelineGeometry{timelineX, lanesTop, laneH, static_cast<float>(fpp), scrollFrames_, firstTrack_};
   const float areaBottom = origin.y + avail.y;
   int rowIndex = 0;
-  const int firstIdx = firstTrack_;
-  for (std::size_t vi = static_cast<std::size_t>(firstIdx); vi < vis.size(); ++vi) {
+  std::vector<std::size_t> order;   // the rows on screen, top to bottom: the pinned ones, then the scrolled ones
+  for (int i = 0; i < pinnedRows; ++i) order.push_back(static_cast<std::size_t>(i));
+  for (std::size_t i = static_cast<std::size_t>(pinnedRows + firstTrack_); i < vis.size(); ++i) order.push_back(i);
+  auto slotOf = [&](int row) { for (std::size_t k = 0; k < order.size(); ++k) if (static_cast<int>(order[k]) == row) return static_cast<int>(k); return 0; };
+  for (const std::size_t vi : order) {
     if (y + 20.f > areaBottom) break;
     const TrackId id = vis[vi];
     session::Track* t = session_->track(id);
@@ -563,6 +569,9 @@ void App::drawEdit() {
       if (!small) {
         ImGui::SameLine(0, 2);
         const auto mm = t->source->monitorMode();
+        if (sBtn("P", trackPinned(id), 0xFFE0A030, 20)) togglePinned(id);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Pin: a pinned track stays at the top of the timeline while the others scroll");
+        ImGui::SameLine(0, 2);
         if (sBtn("I", mm != session::MonitorMode::Auto, mm == session::MonitorMode::Input ? 0xFF3FA84A : 0xFF6A6A6A, 20)) cycleMonitor(id);
         if (ImGui::IsItemHovered())
           ImGui::SetTooltip("Input monitoring: %s\nClick to change: Auto (input while stopped or recording), Input (always), Off",
@@ -854,7 +863,7 @@ void App::drawEdit() {
     if (io.MouseWheelH != 0.f) scrollFrames_ = std::max(0.0, scrollFrames_ - static_cast<double>(io.MouseWheelH) * timelineW * fpp * 0.1);
   }
   const int visRows = static_cast<int>(vis.size());
-  auto rowAt = [&](float yy) -> int { if (yy < lanesTop) return -1; const int r = static_cast<int>((yy - lanesTop) / laneH) + firstIdx; return r < 0 || r >= visRows ? -1 : r; };
+  auto rowAt = [&](float yy) -> int { if (yy < lanesTop) return -1; const int k = static_cast<int>((yy - lanesTop) / laneH); return k < 0 || k >= static_cast<int>(order.size()) || k >= visRows ? -1 : static_cast<int>(order[static_cast<std::size_t>(k)]); };
   // (a copy: the playlist is a temporary, a pointer into it would dangle)
   auto clipAt = [&](session::Track* t, std::int64_t f) -> std::optional<Clip> {
     std::optional<Clip> hit;
@@ -876,7 +885,7 @@ void App::drawEdit() {
       selTrack_ = vis[static_cast<std::size_t>(row)];
       session::Track* t = session_->track(selTrack_);
       const std::optional<Clip> c = clipAt(t, f);
-      const bool lowerHalf = (mouse.y - lanesTop) - static_cast<float>(row - firstIdx) * laneH > laneH * 0.5f;
+      const bool lowerHalf = (mouse.y - lanesTop) - static_cast<float>(slotOf(row)) * laneH > laneH * 0.5f;
       Tool tool = tool_;
       if (tool == Tool::Smart) tool = lowerHalf ? Tool::Grabber : Tool::Selector;
       selClip_ = c ? c->id : -1;
@@ -886,7 +895,7 @@ void App::drawEdit() {
         scrollFrames_ = std::max(0.0, static_cast<double>(f) - static_cast<double>(mouse.x - timelineX) * framesPerPixel_);
       } else if (tool == Tool::Pencil && c) {   // draw the clip's gain line freehand: top of the lane +12 dB, bottom -36 dB
         dragKind_ = 6; dragging_ = true; pencilLast_ = -1;
-        dragLaneTop_ = lanesTop + static_cast<float>(row - firstIdx) * laneH; dragLaneH_ = laneH;
+        dragLaneTop_ = lanesTop + static_cast<float>(slotOf(row)) * laneH; dragLaneH_ = laneH;
       } else if (tool == Tool::Scrubber) {   // drag to hear the audio under the pointer
         dragKind_ = 5; dragging_ = true;
         engine_->transport().locate(f);

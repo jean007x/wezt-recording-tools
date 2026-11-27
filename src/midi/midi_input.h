@@ -72,4 +72,24 @@ std::vector<std::string> listMidiInputs();
 // Opens the nth entry of listMidiInputs() with the platform backend.
 std::unique_ptr<IMidiInput> openMidiInput(std::size_t index);
 
+// ---- MIDI output ----
+// The bytes of a channel message: 2 or 3 bytes (Program and ChannelPressure take 2). Returns the count; Transport messages are not channel
+// messages and give 0.
+int encodeMessage(const MidiMessage& m, std::uint8_t out[3]);
+
+class IMidiOutput {
+ public:
+  virtual ~IMidiOutput() = default;
+  virtual bool start(std::string* error) = 0;
+  virtual void stop() = 0;
+  virtual std::string name() const = 0;
+  // Sends one channel message now (from the control/UI thread, never from the audio callback).
+  virtual bool send(const MidiMessage& m) = 0;
+};
+
+// Writes raw MIDI bytes to a file/device/FIFO (POSIX only; null elsewhere): ALSA /dev/snd/midiC*D*, or a FIFO in tests.
+std::unique_ptr<IMidiOutput> openRawMidiOutput(const std::string& path);
+std::vector<std::string> listMidiOutputs();
+std::unique_ptr<IMidiOutput> openMidiOutput(std::size_t index);
+
 }  // namespace wezt::midi

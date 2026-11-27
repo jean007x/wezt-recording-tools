@@ -30,7 +30,32 @@ class WinMidi final : public IMidiInput {
   }
   UINT id_; HMIDIIN h_ = nullptr;
 };
+class WinMidiOut final : public IMidiOutput {
+ public:
+  explicit WinMidiOut(UINT id) : id_(id) {}
+  ~WinMidiOut() override { stop(); }
+  std::string name() const override { MIDIOUTCAPSA c{}; if (midiOutGetDevCapsA(id_, &c, sizeof c) == MMSYSERR_NOERROR) return c.szPname; return "MIDI output"; }
+  bool start(std::string* error) override {
+    if (h_) return true;
+    if (midiOutOpen(&h_, id_, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) { h_ = nullptr; if (error) *error = "Cannot open the MIDI output"; return false; }
+    return true;
+  }
+  void stop() override { if (h_) { midiOutReset(h_); midiOutClose(h_); h_ = nullptr; } }
+  bool send(const MidiMessage& m) override {
+    std::uint8_t b[3] = {0, 0, 0};
+    if (!h_ || encodeMessage(m, b) == 0) return false;
+    return midiOutShortMsg(h_, static_cast<DWORD>(b[0]) | (static_cast<DWORD>(b[1]) << 8) | (static_cast<DWORD>(b[2]) << 16)) == MMSYSERR_NOERROR;
+  }
+ private:
+  UINT id_; HMIDIOUT h_ = nullptr;
+};
 }  // namespace
+std::vector<std::string> listMidiOutputs() {
+  std::vector<std::string> v; const UINT n = midiOutGetNumDevs();
+  for (UINT i = 0; i < n; ++i) { MIDIOUTCAPSA c{}; midiOutGetDevCapsA(i, &c, sizeof c); v.push_back(c.szPname); }
+  return v;
+}
+std::unique_ptr<IMidiOutput> openMidiOutput(std::size_t i) { return i < midiOutGetNumDevs() ? std::make_unique<WinMidiOut>(static_cast<UINT>(i)) : nullptr; }
 std::vector<std::string> listMidiInputs() {
   std::vector<std::string> v; const UINT n = midiInGetNumDevs();
   for (UINT i = 0; i < n; ++i) { MIDIINCAPSA c{}; midiInGetDevCapsA(i, &c, sizeof c); v.push_back(c.szPname); }

@@ -56,7 +56,7 @@ Known limits: structural edits (add/remove/duplicate track, inserts, sends) stop
 a moment, because the graph may only change while it is stopped. File paths are typed in a text box
 (no native file dialog yet). MIDI works: parts are edited in the Piano Roll and Score windows and played through the
 Sampler, Wezt Synth or a hosted VST3/CLAP instrument; a hardware MIDI keyboard plays the selected part's instrument
-(see "MIDI keyboard" below). While the transport records, notes played on the keyboard are captured into the selected MIDI part (beats from the timeline start) and added as one undo step when recording stops. MIDI output (sending to hardware) is not built.
+(see "MIDI keyboard" below). While the transport records, notes played on the keyboard are captured into the selected MIDI part (beats from the timeline start) and added as one undo step when recording stops. **MIDI Out**: choose an output next to the keyboard chooser in the Piano Roll; the keyboard's notes (thru) and the MIDI parts are then sent to it, with all-notes-off on every channel when playback stops or jumps. The parts are sent at the timing of the program's frame (a few milliseconds), not sample-accurately. The Windows and macOS output backends are written but have not been run on those systems.
 
 ## Look
 
@@ -86,17 +86,17 @@ Filter and Amp, with knobs and AHDSR envelope graphs; and an on-screen keyboard.
   cutoff, resonance, drive, envelope depth, keyscale, envelope and velocity. **Amp:** pan, polyphony,
   mono/legato, volume, envelope, velocity.
 
-**From Clip** loads the clip selected on the timeline as the sample (recording straight into the sampler is not built: record on a track, then use this). **Follow Tempo** (with the tempo the sample was recorded at) time-stretches the sample offline to the project tempo with the Elastic Audio engine, keeping the pitch; press it again after the tempo changes. The patch still refers to the original file, so a reloaded patch has the unstretched sample. The filter types are 12 dB LP/HP/BP only; there are no other filter models.
+**From Clip** loads the clip selected on the timeline as the sample **Record** takes the audio input straight into the sampler (a throwaway track records and is removed afterwards). **Follow Tempo** (with the tempo the sample was recorded at) time-stretches the sample offline to the project tempo with the Elastic Audio engine, keeping the pitch; press it again after the tempo changes. The patch still refers to the original file, so a reloaded patch has the unstretched sample. The filter types are 12 dB LP/HP/BP only; there are no other filter models.
 
 ## Main window layout
 
 Top to bottom: title strip ("Edit: <session>"); toolbar; overview strip; the work area; a bottom tab bar.
 
-- **Toolbar, row 1:** edit modes in a dark green box (Shuffle, Spot, Slip, Grid; the active one is lit; in Spot mode a click on a clip opens the **Spot** dialog to set its exact start, also Shift+F3; **Special Paste**, Ctrl+Shift+V, pastes several copies with a gap, optionally merging with what is underneath), five zoom presets
+- **Toolbar, row 1:** edit modes in a dark green box (Shuffle, Spot, Slip, Grid; the active one is lit; in Spot mode a click on a clip opens the **Spot** dialog to set its exact start, also Shift+F3; **Time Operations**, Ctrl+Shift+T, inserts or cuts time across every track, its automation and the markers; **Capture Clip**, Ctrl+R, makes the selected range its own clip; a track's **P** button (Ctrl+Shift+P) pins it at the top while the rest scroll; **Special Paste**, Ctrl+Shift+V, pastes several copies with a gap, optionally merging with what is underneath), five zoom presets
   (click recalls, Shift+click stores), zoom out/in, waveform height, track height, tools (smart, zoom, trim, selector, grabber;
   scrub and pencil are shown dimmed). **Row 2:** transport, scroll-with-playhead, **+ / - / Dup track buttons**, add marker,
   Edit / Mix / Float mix, tempo. **Right:** main counter in green, sub counter, start / end / length, MIDI In light (flashes on keyboard
-  messages) and MIDI Out light (always dark: MIDI output is not built), grid value and nudge value with nudge buttons.
+  messages) and MIDI Out light, grid value and nudge value with nudge buttons.
 - **Overview strip:** the whole session as coloured lines per track; the lighter box is what the Edit window shows; drag in it to scroll.
 - **Left list:** TRACKS (click to select, dot to hide or show) and GROUPS. A group links mute, solo, record-arm and fader moves
   across its members; `<ALL>` is a switch for all tracks. Groups, markers and hidden tracks are kept while the app runs; they are not
